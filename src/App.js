@@ -1,8 +1,143 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 
-// ============== API FUNCTIONS ==============
+// ============== CRYPTO UTILS FOR BINANCE AUTH ==============
+const generateSignature = async (queryString, secretKey) => {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw', encoder.encode(secretKey), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  );
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(queryString));
+  return Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, '0')).join('');
+};
 
+const saveApiKeys = (apiKey, secretKey) => {
+  try { localStorage.setItem('binance_api_key', btoa(apiKey)); localStorage.setItem('binance_secret_key', btoa(secretKey)); return true; }
+  catch (e) { return false; }
+};
+
+const loadApiKeys = () => {
+  try {
+    const apiKey = localStorage.getItem('binance_api_key');
+    const secretKey = localStorage.getItem('binance_secret_key');
+    return { apiKey: apiKey ? atob(apiKey) : '', secretKey: secretKey ? atob(secretKey) : '' };
+  } catch (e) { return { apiKey: '', secretKey: '' }; }
+};
+
+const clearApiKeys = () => { localStorage.removeItem('binance_api_key'); localStorage.removeItem('binance_secret_key'); };
+
+// ============== BINANCE AUTHENTICATED API ==============
+const fetchSpotBalance = async (apiKey, secretKey) => {
+  try {
+    const timestamp = Date.now();
+    const queryString = `timestamp=${timestamp}`;
+    const signature = await generateSignature(queryString, secretKey);
+    const response = await fetch(`https://api.binance.com/api/v3/account?${queryString}&signature=${signature}`, { headers: { 'X-MBX-APIKEY': apiKey } });
+    if (!response.ok) { const error = await response.json(); throw new Error(error.msg || 'API Error'); }
+    const data = await response.json();
+    const balances = data.balances.filter(b => parseFloat(b.free) > 0 || parseFloat(b.locked) > 0)
+      .map(b => ({ asset: b.asset, free: parseFloat(b.free), locked: parseFloat(b.locked), total: parseFloat(b.free) + parseFloat(b.locked) }))
+      .sort((a, b) => b.total - a.total);
+    return { balances, canTrade: data.canTrade, accountType: 'SPOT' };
+  } catch (error) { return { error: error.message }; }
+};
+
+const fetchFuturesBalance = async (apiKey, secretKey) => {
+  try {
+    const timestamp = Date.now();
+    const queryString = `timestamp=${timestamp}`;
+    const signature = await generateSignature(queryString, secretKey);
+    const response = await fetch(`https://fapi.binance.com/fapi/v2/balance?${queryString}&signature=${signature}`, { headers: { 'X-MBX-APIKEY': apiKey } });
+    if (!response.ok) { const error = await response.json(); throw new Error(error.msg || 'API Error'); }
+    const data = await response.json();
+    const balances = data.filter(b => parseFloat(b.balance) > 0 || parseFloat(b.crossUnPnl) !== 0)
+      .map(b => ({ asset: b.asset, balance: parseFloat(b.balance), crossUnPnl: parseFloat(b.crossUnPnl), availableBalance: parseFloat(b.availableBalance) }));
+    return { balances, accountType: 'FUTURES' };
+  } catch (error) { return { error: error.message }; }
+};
+
+const fetchFuturesPositions = async (apiKey, secretKey) => {
+  try {
+    const timestamp = Date.now();
+    const queryString = `timestamp=${timestamp}`;
+    const signature = await generateSignature(queryString, secretKey);
+    const response = await fetch(`https://fapi.binance.com/fapi/v2/positionRisk?${queryString}&signature=${signature}`, { headers: { 'X-MBX-APIKEY': apiKey } });
+    if (!response.ok) { const error = await response.json(); throw new Error(error.msg || 'API Error'); }
+    const data = await response.json();
+    const positions = data.filter(p => parseFloat(p.positionAmt) !== 0).map(p => ({
+      symbol: p.symbol, positionAmt: parseFloat(p.positionAmt), entryPrice: parseFloat(p.entryPrice),
+      markPrice: parseFloat(p.markPrice), unRealizedProfit: parseFloat(p.unRealizedProfit),
+      liquidationPrice: parseFloat(p.liquidationPrice), leverage: parseInt(p.leverage), marginType: p.marginType,
+      side: parseFloat(p.positionAmt) > 0 ? 'LONG' : 'SHORT',
+      pnlPercent: ((parseFloat(p.markPrice) - parseFloat(p.entryPrice)) / parseFloat(p.entryPrice) * 100 * (parseFloat(p.positionAmt) > 0 ? 1 : -1)).toFixed(2)
+    }));
+    return { positions };
+  } catch (error) { return { error: error.message }; }
+};
+
+const fetchOpenOrders = async (apiKey, secretKey) => {
+  try {
+    const timestamp = Date.now();
+    const queryString = `timestamp=${timestamp}`;
+    const signature = await generateSignature(queryString, secretKey);
+    const [spotRes, futuresRes] = await Promise.all([
+      fetch(`https://api.binance.com/api/v3/openOrders?${queryString}&signature=${signature}`, { headers: { 'X-MBX-APIKEY': apiKey } }),
+      fetch(`https://fapi.binance.com/fapi/v1/openOrders?${queryString}&signature=${signature}`, { headers: { 'X-MBX-APIKEY': apiKey } })
+    ]);
+    const spotOrders = spotRes.ok ? await spotRes.json() : [];
+    const futuresOrders = futuresRes.ok ? await futuresRes.json() : [];
+    return { spot: spotOrders.map(o => ({ ...o, market: 'SPOT' })), futures: futuresOrders.map(o => ({ ...o, market: 'FUTURES' })) };
+  } catch (error) { return { error: error.message }; }
+};
+
+// ============== TRADING FUNCTIONS ==============
+const placeSpotOrder = async (apiKey, secretKey, symbol, side, type, quantity, price = null) => {
+  try {
+    const timestamp = Date.now();
+    let params = `symbol=${symbol}&side=${side}&type=${type}&quantity=${quantity}&timestamp=${timestamp}`;
+    if (type === 'LIMIT' && price) params += `&price=${price}&timeInForce=GTC`;
+    const signature = await generateSignature(params, secretKey);
+    const response = await fetch(`https://api.binance.com/api/v3/order?${params}&signature=${signature}`, { method: 'POST', headers: { 'X-MBX-APIKEY': apiKey } });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.msg || 'Order failed');
+    return { success: true, order: data };
+  } catch (error) { return { success: false, error: error.message }; }
+};
+
+const placeFuturesOrder = async (apiKey, secretKey, symbol, side, type, quantity, price = null, reduceOnly = false) => {
+  try {
+    const timestamp = Date.now();
+    let params = `symbol=${symbol}&side=${side}&type=${type}&quantity=${quantity}&timestamp=${timestamp}`;
+    if (type === 'LIMIT' && price) params += `&price=${price}&timeInForce=GTC`;
+    if (reduceOnly) params += `&reduceOnly=true`;
+    const signature = await generateSignature(params, secretKey);
+    const response = await fetch(`https://fapi.binance.com/fapi/v1/order?${params}&signature=${signature}`, { method: 'POST', headers: { 'X-MBX-APIKEY': apiKey } });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.msg || 'Order failed');
+    return { success: true, order: data };
+  } catch (error) { return { success: false, error: error.message }; }
+};
+
+const cancelOrder = async (apiKey, secretKey, symbol, orderId, market = 'SPOT') => {
+  try {
+    const timestamp = Date.now();
+    const params = `symbol=${symbol}&orderId=${orderId}&timestamp=${timestamp}`;
+    const signature = await generateSignature(params, secretKey);
+    const baseUrl = market === 'FUTURES' ? 'https://fapi.binance.com/fapi/v1/order' : 'https://api.binance.com/api/v3/order';
+    const response = await fetch(`${baseUrl}?${params}&signature=${signature}`, { method: 'DELETE', headers: { 'X-MBX-APIKEY': apiKey } });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.msg || 'Cancel failed');
+    return { success: true, order: data };
+  } catch (error) { return { success: false, error: error.message }; }
+};
+
+const closeFuturesPosition = async (apiKey, secretKey, symbol, positionAmt) => {
+  const side = positionAmt > 0 ? 'SELL' : 'BUY';
+  const quantity = Math.abs(positionAmt);
+  return await placeFuturesOrder(apiKey, secretKey, symbol, side, 'MARKET', quantity, null, true);
+};
+
+// ============== PUBLIC API FUNCTIONS ==============
 const fetchCoinGeckoData = async () => {
   try {
     const [pricesRes, globalRes, fearGreedRes] = await Promise.all([
@@ -22,7 +157,7 @@ const fetchCoinGeckoData = async () => {
       volume24h: parseFloat((global.data.total_volume.usd / 1e9).toFixed(1)),
       fearGreed: { value: parseInt(fearGreed.data[0].value), label: fearGreed.data[0].value_classification }
     };
-  } catch (error) { console.error('CoinGecko Error:', error); return null; }
+  } catch (error) { return null; }
 };
 
 const fetchBinanceData = async () => {
@@ -43,7 +178,7 @@ const fetchBinanceData = async () => {
       openInterest: { value: parseFloat((oiValue * 95000 / 1e9).toFixed(2)), change: 0 },
       longShortRatio: { value: parseFloat(lsRatio.toFixed(2)) }
     };
-  } catch (error) { console.error('Binance Error:', error); return null; }
+  } catch (error) { return null; }
 };
 
 const fetchDefiLlamaData = async () => {
@@ -56,23 +191,19 @@ const fetchDefiLlamaData = async () => {
     const tvlData = await tvlRes.json();
     const stableData = await stableRes.json();
     const protocols = await protocolsRes.json();
-    
     const latestTvl = tvlData[tvlData.length - 1]?.tvl || 0;
     const prevTvl = tvlData[tvlData.length - 8]?.tvl || latestTvl;
     const tvlChange = ((latestTvl - prevTvl) / prevTvl * 100).toFixed(1);
-    
     const latestStable = stableData[stableData.length - 1]?.totalCirculating?.peggedUSD || 0;
     const prevStable = stableData[stableData.length - 31]?.totalCirculating?.peggedUSD || latestStable;
     const stableChange = ((latestStable - prevStable) / prevStable * 100).toFixed(1);
-    
     const top5 = protocols.sort((a, b) => (b.tvl || 0) - (a.tvl || 0)).slice(0, 5).map(p => ({ name: p.name, tvl: p.tvl, change: p.change_1d || 0 }));
-    
     return {
       tvl: { value: parseFloat((latestTvl / 1e9).toFixed(1)), change: parseFloat(tvlChange) },
       stablecoinSupply: { value: parseFloat((latestStable / 1e9).toFixed(1)), change: parseFloat(stableChange) },
       topProtocols: top5
     };
-  } catch (error) { console.error('DefiLlama Error:', error); return null; }
+  } catch (error) { return null; }
 };
 
 const fetchFredData = async () => {
@@ -83,13 +214,10 @@ const fetchFredData = async () => {
     const latest = parseFloat(data.observations[0].value) / 1000;
     const yearAgo = parseFloat(data.observations[12]?.value || data.observations[0].value) / 1000;
     const change = ((latest - yearAgo) / yearAgo * 100).toFixed(1);
-    return {
-      m2Supply: { value: parseFloat(latest.toFixed(2)), change: parseFloat(change), trend: parseFloat(change) > 0 ? 'expanding' : 'contracting', lastUpdate: data.observations[0].date }
-    };
-  } catch (error) { console.error('FRED Error:', error); return null; }
+    return { m2Supply: { value: parseFloat(latest.toFixed(2)), change: parseFloat(change), trend: parseFloat(change) > 0 ? 'expanding' : 'contracting', lastUpdate: data.observations[0].date } };
+  } catch (error) { return null; }
 };
 
-// ============== ALTSEASON & STABLECOIN METRICS ==============
 const fetchAltseasonData = async () => {
   try {
     const [globalRes, ethBtcRes, stableRes] = await Promise.all([
@@ -97,40 +225,21 @@ const fetchAltseasonData = async () => {
       fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum,bitcoin&vs_currencies=btc,usd'),
       fetch('https://stablecoins.llama.fi/stablecoins?includePrices=true')
     ]);
-    
     const global = await globalRes.json();
     const ethBtc = await ethBtcRes.json();
     const stables = await stableRes.json();
-    
-    // ETH/BTC Ratio
     const ethBtcRatio = ethBtc.ethereum?.btc || 0;
-    
-    // Total Market Cap i Total2 (bez BTC)
     const totalMcap = global.data?.total_market_cap?.usd || 0;
     const btcMcap = global.data?.market_cap_percentage?.btc * totalMcap / 100 || 0;
-    const total2 = (totalMcap - btcMcap) / 1e12; // w trylionach
-    
-    // BTC Dominance
+    const total2 = (totalMcap - btcMcap) / 1e12;
     const btcDominance = global.data?.market_cap_percentage?.btc || 50;
-    
-    // Znajdź USDT i USDC
     const usdt = stables.peggedAssets?.find(s => s.symbol === 'USDT');
     const usdc = stables.peggedAssets?.find(s => s.symbol === 'USDC');
-    
     const usdtMcap = usdt?.circulating?.peggedUSD || 0;
     const usdcMcap = usdc?.circulating?.peggedUSD || 0;
     const totalStableMcap = usdtMcap + usdcMcap;
-    
-    // Zmiany 7d dla stablecoinów
-    const usdtChange7d = usdt?.circulatingPrevWeek?.peggedUSD 
-      ? ((usdtMcap - usdt.circulatingPrevWeek.peggedUSD) / usdt.circulatingPrevWeek.peggedUSD * 100)
-      : 0;
-    const usdcChange7d = usdc?.circulatingPrevWeek?.peggedUSD
-      ? ((usdcMcap - usdc.circulatingPrevWeek.peggedUSD) / usdc.circulatingPrevWeek.peggedUSD * 100)
-      : 0;
-    
-    // Prosty Altseason Index: bazujemy na BTC dominance
-    // <45% = altseason (75+), 45-50% = 50-75, 50-55% = 25-50, >55% = BTC season (0-25)
+    const usdtChange7d = usdt?.circulatingPrevWeek?.peggedUSD ? ((usdtMcap - usdt.circulatingPrevWeek.peggedUSD) / usdt.circulatingPrevWeek.peggedUSD * 100) : 0;
+    const usdcChange7d = usdc?.circulatingPrevWeek?.peggedUSD ? ((usdcMcap - usdc.circulatingPrevWeek.peggedUSD) / usdc.circulatingPrevWeek.peggedUSD * 100) : 0;
     let altseasonIndex = 50;
     if (btcDominance < 40) altseasonIndex = 90;
     else if (btcDominance < 45) altseasonIndex = 75;
@@ -138,102 +247,37 @@ const fetchAltseasonData = async () => {
     else if (btcDominance < 55) altseasonIndex = 40;
     else if (btcDominance < 60) altseasonIndex = 25;
     else altseasonIndex = 10;
-    
-    // Bonus za ETH/BTC ratio
     if (ethBtcRatio > 0.055) altseasonIndex = Math.min(100, altseasonIndex + 15);
     else if (ethBtcRatio > 0.045) altseasonIndex = Math.min(100, altseasonIndex + 5);
     else if (ethBtcRatio < 0.03) altseasonIndex = Math.max(0, altseasonIndex - 15);
-    
     return {
-      ethBtcRatio: parseFloat(ethBtcRatio.toFixed(5)),
-      total2: parseFloat(total2.toFixed(3)),
-      btcDominance: parseFloat(btcDominance.toFixed(1)),
-      altseasonIndex: Math.round(altseasonIndex),
+      ethBtcRatio: parseFloat(ethBtcRatio.toFixed(5)), total2: parseFloat(total2.toFixed(3)),
+      btcDominance: parseFloat(btcDominance.toFixed(1)), altseasonIndex: Math.round(altseasonIndex),
       stablecoins: {
-        usdt: {
-          mcap: parseFloat((usdtMcap / 1e9).toFixed(2)),
-          change7d: parseFloat(usdtChange7d.toFixed(2))
-        },
-        usdc: {
-          mcap: parseFloat((usdcMcap / 1e9).toFixed(2)),
-          change7d: parseFloat(usdcChange7d.toFixed(2))
-        },
+        usdt: { mcap: parseFloat((usdtMcap / 1e9).toFixed(2)), change7d: parseFloat(usdtChange7d.toFixed(2)) },
+        usdc: { mcap: parseFloat((usdcMcap / 1e9).toFixed(2)), change7d: parseFloat(usdcChange7d.toFixed(2)) },
         total: parseFloat((totalStableMcap / 1e9).toFixed(2)),
         usdtDominance: parseFloat((usdtMcap / totalStableMcap * 100).toFixed(1))
       }
     };
-  } catch (error) {
-    console.error('Altseason Data Error:', error);
-    return null;
-  }
+  } catch (error) { return null; }
 };
 
-// ============== MARKET STRUCTURE API (BINANCE) ==============
 const fetchMarketStructure = async () => {
   try {
     const response = await fetch('https://api.binance.com/api/v3/ticker/24hr');
     const data = await response.json();
-    
-    // Filtruj tylko pary USDT (żeby nie duplikować) i usuń stablecoiny
-    const usdtPairs = data.filter(t => 
-      t.symbol.endsWith('USDT') && 
-      !t.symbol.includes('BUSD') &&
-      !t.symbol.includes('USDC') &&
-      !t.symbol.includes('TUSD') &&
-      !t.symbol.includes('FDUSD') &&
-      parseFloat(t.quoteVolume) > 1000000 // min $1M volume
-    );
-    
-    // Sortuj po zmianie 24h
-    const sorted = [...usdtPairs].sort((a, b) => 
-      parseFloat(b.priceChangePercent) - parseFloat(a.priceChangePercent)
-    );
-    
-    const topGainers = sorted.slice(0, 15).map(t => ({
-      name: t.symbol.replace('USDT', ''),
-      symbol: t.symbol,
-      change24h: parseFloat(t.priceChangePercent).toFixed(2),
-      price: parseFloat(t.lastPrice),
-      volume: parseFloat(t.quoteVolume),
-      high24h: parseFloat(t.highPrice),
-      low24h: parseFloat(t.lowPrice)
-    }));
-    
-    const topLosers = sorted.slice(-15).reverse().map(t => ({
-      name: t.symbol.replace('USDT', ''),
-      symbol: t.symbol,
-      change24h: parseFloat(t.priceChangePercent).toFixed(2),
-      price: parseFloat(t.lastPrice),
-      volume: parseFloat(t.quoteVolume),
-      high24h: parseFloat(t.highPrice),
-      low24h: parseFloat(t.lowPrice)
-    }));
-    
-    // Market breadth - wszystkie pary USDT
+    const usdtPairs = data.filter(t => t.symbol.endsWith('USDT') && !t.symbol.includes('BUSD') && !t.symbol.includes('USDC') && !t.symbol.includes('TUSD') && !t.symbol.includes('FDUSD') && parseFloat(t.quoteVolume) > 1000000);
+    const sorted = [...usdtPairs].sort((a, b) => parseFloat(b.priceChangePercent) - parseFloat(a.priceChangePercent));
+    const topGainers = sorted.slice(0, 15).map(t => ({ name: t.symbol.replace('USDT', ''), symbol: t.symbol, change24h: parseFloat(t.priceChangePercent).toFixed(2), price: parseFloat(t.lastPrice), volume: parseFloat(t.quoteVolume) }));
+    const topLosers = sorted.slice(-15).reverse().map(t => ({ name: t.symbol.replace('USDT', ''), symbol: t.symbol, change24h: parseFloat(t.priceChangePercent).toFixed(2), price: parseFloat(t.lastPrice), volume: parseFloat(t.quoteVolume) }));
     const gainers = usdtPairs.filter(t => parseFloat(t.priceChangePercent) > 0).length;
     const losers = usdtPairs.filter(t => parseFloat(t.priceChangePercent) < 0).length;
-    const unchanged = usdtPairs.filter(t => parseFloat(t.priceChangePercent) === 0).length;
-    
-    return {
-      topGainers,
-      topLosers,
-      marketBreadth: {
-        gainers,
-        losers,
-        unchanged,
-        ratio: (gainers / (gainers + losers) * 100).toFixed(0),
-        total: usdtPairs.length
-      },
-      source: 'Binance'
-    };
-  } catch (error) { 
-    console.error('Binance Market Structure Error:', error); 
-    return null; 
-  }
+    return { topGainers, topLosers, marketBreadth: { gainers, losers, ratio: (gainers / (gainers + losers) * 100).toFixed(0), total: usdtPairs.length }, source: 'Binance' };
+  } catch (error) { return null; }
 };
 
 // ============== TRADINGVIEW WIDGETS ==============
-
 const TradingViewChart = ({ symbol = 'BINANCE:BTCUSDT', theme = 'dark' }) => {
   const containerRef = useRef(null);
   useEffect(() => {
@@ -242,11 +286,7 @@ const TradingViewChart = ({ symbol = 'BINANCE:BTCUSDT', theme = 'dark' }) => {
       const script = document.createElement('script');
       script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
       script.async = true;
-      script.innerHTML = JSON.stringify({
-        autosize: true, symbol, interval: 'D', timezone: 'Europe/Warsaw',
-        theme, style: '1', locale: 'pl', allow_symbol_change: true,
-        studies: ['RSI@tv-basicstudies', 'MASimple@tv-basicstudies']
-      });
+      script.innerHTML = JSON.stringify({ autosize: true, symbol, interval: 'D', timezone: 'Europe/Warsaw', theme, style: '1', locale: 'pl', allow_symbol_change: true, studies: ['RSI@tv-basicstudies', 'MASimple@tv-basicstudies'] });
       containerRef.current.appendChild(script);
     }
   }, [symbol, theme]);
@@ -261,10 +301,7 @@ const TradingViewTechnicalAnalysis = ({ symbol = 'BINANCE:BTCUSDT', theme = 'dar
       const script = document.createElement('script');
       script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-technical-analysis.js';
       script.async = true;
-      script.innerHTML = JSON.stringify({
-        interval, width: '100%', isTransparent: true, height: '450',
-        symbol, showIntervalTabs: true, displayMode: 'single', locale: 'pl', colorTheme: theme
-      });
+      script.innerHTML = JSON.stringify({ interval, width: '100%', isTransparent: true, height: '450', symbol, showIntervalTabs: true, displayMode: 'single', locale: 'pl', colorTheme: theme });
       containerRef.current.appendChild(script);
     }
   }, [symbol, theme, interval]);
@@ -273,562 +310,90 @@ const TradingViewTechnicalAnalysis = ({ symbol = 'BINANCE:BTCUSDT', theme = 'dar
 
 // ============== HELP CONTENT ==============
 const helpContent = {
-  dayTradingScore: {
-    title: '🎯 Day Trading Score',
-    emoji: '🎯',
-    description: 'Wskaźnik dla aktywnych traderów. Horyzont: godziny do dni. Reaguje na krótkoterminowe ekstremum sentymentu i leverage.',
-    interpretation: [
-      { condition: '70-100: AKUMULUJ', signal: 'bullish', text: '🟢 Silny sygnał kupna. Sentyment wspiera longi.' },
-      { condition: '55-69: HOLD+', signal: 'bullish', text: '🟢 Pozytywne warunki. Rozważ pozycję long.' },
-      { condition: '45-54: HOLD', signal: 'neutral', text: '🟡 Neutralnie. Czekaj na wyraźniejszy sygnał.' },
-      { condition: '30-44: OSTROŻNIE', signal: 'warning', text: '🟠 Ryzyko korekty. Trzymaj się z boku.' },
-      { condition: '0-29: REDUKUJ', signal: 'bearish', text: '🔴 Rozważ short lub pozostań w gotówce.' }
-    ],
-    tip: 'Składowe: Fear & Greed (odwrócony), Funding Rate (8h), Momentum BTC 24h, Long/Short Ratio. Reaguje szybko na zmiany sentymentu.',
-    source: 'CoinGecko, Binance, Alternative.me'
-  },
-  swingScore: {
-    title: '📊 Swing Score',
-    emoji: '📊',
-    description: 'Wskaźnik dla swing traderów. Horyzont: tygodnie. Łączy sentyment z on-chain i DeFi metrykami.',
-    interpretation: [
-      { condition: '70-100: AKUMULUJ', signal: 'bullish', text: '🟢 Dobry moment na średnioterminowe pozycje.' },
-      { condition: '55-69: HOLD+', signal: 'bullish', text: '🟢 Dokupuj na korektach.' },
-      { condition: '45-54: HOLD', signal: 'neutral', text: '🟡 Czekaj na lepszy setup.' },
-      { condition: '30-44: OSTROŻNIE', signal: 'warning', text: '🟠 Zmniejsz ekspozycję.' },
-      { condition: '0-29: REDUKUJ', signal: 'bearish', text: '🔴 Realizuj zyski, rozważ hedging.' }
-    ],
-    tip: 'Składowe: TVL trend (7d), BTC Dominance, Stablecoin inflows, Fear & Greed. Idealny dla pozycji na 1-4 tygodni.',
-    source: 'DefiLlama, CoinGecko'
-  },
-  hodlScore: {
-    title: '🏦 HODL Score',
-    emoji: '🏦',
-    description: 'Wskaźnik dla długoterminowych inwestorów. Horyzont: miesiące do lat. Bazuje na makroekonomii i adopcji.',
-    interpretation: [
-      { condition: '70-100: AKUMULUJ', signal: 'bullish', text: '🟢 Idealny czas na DCA. Warunki makro sprzyjają.' },
-      { condition: '55-69: HOLD+', signal: 'bullish', text: '🟢 Kontynuuj regularne zakupy.' },
-      { condition: '45-54: HOLD', signal: 'neutral', text: '🟡 Trzymaj pozycje. Obserwuj makro.' },
-      { condition: '30-44: OSTROŻNIE', signal: 'warning', text: '🟠 Wstrzymaj DCA. Rozważ częściową realizację.' },
-      { condition: '0-29: REDUKUJ', signal: 'bearish', text: '🔴 Rozważ zmniejszenie ekspozycji długoterminowej.' }
-    ],
-    tip: 'Składowe: M2 Money Supply, Stablecoin supply (30d), TVL jako adopcja, Fear & Greed (ekstrema). M2 koreluje z BTC z opóźnieniem 3-6 msc.',
-    source: 'FRED, DefiLlama'
-  },
-  btcPrice: {
-    title: '₿ Bitcoin Price',
-    emoji: '₿',
-    description: 'Aktualna cena Bitcoina w USD pobierana z CoinGecko API.',
-    interpretation: [
-      { condition: 'Wzrost > 5% dziennie', signal: 'bullish', text: 'Silny momentum wzrostowy' },
-      { condition: 'Spadek > 5% dziennie', signal: 'bearish', text: 'Korekta lub panika' },
-      { condition: 'Stabilność ±2%', signal: 'neutral', text: 'Konsolidacja' }
-    ],
-    tip: 'Porównuj z ATH - dystans od ATH pokazuje potencjał wzrostu lub ryzyko korekty.',
-    source: 'CoinGecko API (LIVE)'
-  },
-  ethPrice: {
-    title: '◆ Ethereum Price',
-    emoji: '◆',
-    description: 'Aktualna cena Ethereum w USD.',
-    interpretation: [
-      { condition: 'ETH/BTC ratio rośnie', signal: 'bullish', text: 'Altseason możliwy' },
-      { condition: 'ETH/BTC ratio spada', signal: 'bearish', text: 'BTC dominacja rośnie' }
-    ],
-    tip: 'Obserwuj ratio ETH/BTC - pokazuje siłę altcoinów względem BTC.',
-    source: 'CoinGecko API (LIVE)'
-  },
-  fearGreed: {
-    title: '😱 Fear & Greed Index',
-    emoji: '😱',
-    description: 'Wskaźnik sentymentu rynku od 0 (ekstremalny strach) do 100 (ekstremalna chciwość).',
-    interpretation: [
-      { condition: '0-25: Extreme Fear', signal: 'bullish', text: '🟢 Okazja zakupowa - "kupuj gdy inni się boją"' },
-      { condition: '26-45: Fear', signal: 'bullish', text: '🟢 Rozważ akumulację' },
-      { condition: '46-55: Neutral', signal: 'neutral', text: '🟡 Brak wyraźnego sygnału' },
-      { condition: '56-75: Greed', signal: 'warning', text: '🟠 Ostrożność, możliwa korekta' },
-      { condition: '76-100: Extreme Greed', signal: 'bearish', text: '🔴 Rozważ realizację zysków' }
-    ],
-    tip: 'Kontrariański wskaźnik - kupuj przy strachu, sprzedawaj przy chciwości.',
-    source: 'Alternative.me (LIVE)'
-  },
-  btcDominance: {
-    title: '👑 BTC Dominance',
-    emoji: '👑',
-    description: 'Udział kapitalizacji BTC w całym rynku krypto.',
-    interpretation: [
-      { condition: '> 55%', signal: 'neutral', text: 'BTC season - kapitał w bezpiecznej przystani' },
-      { condition: '45-55%', signal: 'neutral', text: 'Zrównoważony rynek' },
-      { condition: '< 45%', signal: 'bullish', text: 'Altseason - kapitał płynie do altcoinów' }
-    ],
-    tip: 'Spadająca dominacja przy rosnącym BTC = altseason.',
-    source: 'CoinGecko API (LIVE)'
-  },
-  stablecoinSupply: {
-    title: '💵 Stablecoin Supply',
-    emoji: '💵',
-    description: 'Łączna podaż stablecoinów (USDT, USDC, DAI) - "suchy proch" gotowy do inwestycji.',
-    interpretation: [
-      { condition: 'Wzrost supply', signal: 'bullish', text: '🟢 Nowy kapitał wchodzi na rynek' },
-      { condition: 'Spadek supply', signal: 'bearish', text: '🔴 Kapitał ucieka z krypto' }
-    ],
-    tip: 'Rosnąca podaż stablecoinów to paliwo dla przyszłych wzrostów.',
-    source: 'DefiLlama API (LIVE)'
-  },
-  tvl: {
-    title: '🔒 Total Value Locked',
-    emoji: '🔒',
-    description: 'Łączna wartość zablokowana w protokołach DeFi.',
-    interpretation: [
-      { condition: 'TVL rośnie', signal: 'bullish', text: '🟢 Rosnące zaufanie do DeFi' },
-      { condition: 'TVL spada', signal: 'bearish', text: '🔴 Odpływ kapitału z DeFi' }
-    ],
-    tip: 'Porównuj TVL między chainami - pokazuje gdzie płynie kapitał DeFi.',
-    source: 'DefiLlama API (LIVE)'
-  },
-  m2Supply: {
-    title: '🏦 M2 Money Supply',
-    emoji: '🏦',
-    description: 'Globalna podaż pieniądza M2 (gotówka + depozyty + fundusze rynku pieniężnego).',
-    interpretation: [
-      { condition: 'M2 rośnie (ekspansja)', signal: 'bullish', text: '🟢 Więcej płynności = kapitał szuka zwrotu → BTC rośnie' },
-      { condition: 'M2 spada (kontrakcja)', signal: 'bearish', text: '🔴 QT = odpływ z ryzykownych aktywów' }
-    ],
-    tip: 'BTC koreluje z M2 z opóźnieniem 3-6 miesięcy. Rosnące M2 = bullish dla BTC.',
-    source: 'FRED API (Federal Reserve)'
-  },
-  dxy: {
-    title: '💲 DXY (Dollar Index)',
-    emoji: '💲',
-    description: 'Indeks siły dolara względem koszyka walut.',
-    interpretation: [
-      { condition: 'DXY spada', signal: 'bullish', text: '🟢 Słabszy dolar = kapitał ucieka do BTC' },
-      { condition: 'DXY rośnie', signal: 'bearish', text: '🔴 Silny dolar = risk-off' }
-    ],
-    tip: 'DXY i BTC są negatywnie skorelowane. Spadający DXY to sygnał bullish.',
-    source: 'TradingView'
-  },
-  fundingRate: {
-    title: '💸 Funding Rate',
-    emoji: '💸',
-    description: 'Opłata między long/short na rynku perpetual futures.',
-    interpretation: [
-      { condition: 'Funding > 0.05%', signal: 'bearish', text: '🔴 Nadmierny optymizm - longi płacą shortom' },
-      { condition: 'Funding 0-0.03%', signal: 'neutral', text: '🟡 Neutralny rynek' },
-      { condition: 'Funding < 0', signal: 'bullish', text: '🟢 Pesymizm - potencjalne odbicie' }
-    ],
-    tip: 'Ekstremalnie wysoki funding często poprzedza lokalne szczyty.',
-    source: 'Binance API (LIVE)'
-  },
-  openInterest: {
-    title: '📊 Open Interest',
-    emoji: '📊',
-    description: 'Łączna wartość otwartych pozycji futures.',
-    interpretation: [
-      { condition: 'OI rośnie + cena rośnie', signal: 'bullish', text: '🟢 Nowy kapitał wchodzi w longi' },
-      { condition: 'OI rośnie + cena spada', signal: 'bearish', text: '🔴 Nowy kapitał wchodzi w shorty' },
-      { condition: 'OI spada gwałtownie', signal: 'neutral', text: '🟡 Likwidacje / zamykanie pozycji' }
-    ],
-    tip: 'Rekordowe OI przy lokalnych szczytach = ryzyko kaskadowych likwidacji.',
-    source: 'Binance API (LIVE)'
-  },
-  longShortRatio: {
-    title: '⚖️ Long/Short Ratio',
-    emoji: '⚖️',
-    description: 'Stosunek pozycji long do short na Binance.',
-    interpretation: [
-      { condition: 'L/S > 2.0', signal: 'bearish', text: '🔴 Nadmiar longów - kontrariański sygnał sprzedaży' },
-      { condition: 'L/S 1.0-2.0', signal: 'neutral', text: '🟡 Zrównoważony rynek' },
-      { condition: 'L/S < 1.0', signal: 'bullish', text: '🟢 Nadmiar shortów - potencjalny squeeze' }
-    ],
-    tip: 'Ekstremalne wartości L/S często poprzedzają odwrócenie trendu.',
-    source: 'Binance API (LIVE)'
-  },
-  altseasonIndex: {
-    title: '🌊 Altseason Index',
-    emoji: '🌊',
-    description: 'Wskaźnik pokazujący czy jesteśmy w okresie dominacji altcoinów nad Bitcoinem.',
-    interpretation: [
-      { condition: '75-100: Altseason', signal: 'bullish', text: '🟢 Silny okres altcoinów - rozważ ekspozycję na alty' },
-      { condition: '50-74: Alty rosną', signal: 'bullish', text: '🟢 Altcoiny outperformują BTC' },
-      { condition: '40-49: Neutralny', signal: 'neutral', text: '🟡 Brak wyraźnego trendu' },
-      { condition: '25-39: BTC dominuje', signal: 'warning', text: '🟠 Bitcoin przewodzi - bezpieczniej w BTC' },
-      { condition: '0-24: BTC Season', signal: 'bearish', text: '🔴 Kapitał koncentruje się w BTC' }
-    ],
-    tip: 'Index bazuje na BTC Dominance i ETH/BTC ratio. Historycznie altseason następuje po silnych wzrostach BTC.',
-    source: 'CoinGecko API (kalkulowany)'
-  },
-  ethBtcRatio: {
-    title: '⚡ ETH/BTC Ratio',
-    emoji: '⚡',
-    description: 'Stosunek ceny ETH do BTC - kluczowy wskaźnik siły altcoinów.',
-    interpretation: [
-      { condition: '> 0.055', signal: 'bullish', text: '🟢 ETH bardzo silny - altseason sygnał' },
-      { condition: '0.045-0.055', signal: 'bullish', text: '🟢 ETH outperformuje BTC' },
-      { condition: '0.035-0.045', signal: 'neutral', text: '🟡 Neutralny zakres' },
-      { condition: '< 0.035', signal: 'bearish', text: '🔴 BTC dominuje - risk-off dla altów' }
-    ],
-    tip: 'ETH/BTC > 0.05 historycznie sygnalizuje silną fazę altcoinów. Spadający ratio = uciekaj do BTC.',
-    source: 'CoinGecko API (LIVE)'
-  },
-  total2: {
-    title: '📊 Total2 (bez BTC)',
-    emoji: '📊',
-    description: 'Łączna kapitalizacja rynku crypto bez Bitcoin - miara siły altcoinów.',
-    interpretation: [
-      { condition: 'Total2 rośnie szybciej niż BTC', signal: 'bullish', text: '🟢 Kapitał płynie do altcoinów' },
-      { condition: 'Total2 rośnie wolniej niż BTC', signal: 'neutral', text: '🟡 BTC prowadzi wzrosty' },
-      { condition: 'Total2 spada', signal: 'bearish', text: '🔴 Kapitał ucieka z altcoinów' }
-    ],
-    tip: 'Porównuj dynamikę Total2 vs BTC dla timing altseason. Rosnące Total2 przy spadającym BTC = rotacja.',
-    source: 'CoinGecko API (LIVE)'
-  },
-  stablecoinFlows: {
-    title: '💵 Stablecoin Flows',
-    emoji: '💵',
-    description: 'Przepływy kapitału w głównych stablecoinach (USDT, USDC) - "suchy proch" gotowy do inwestycji.',
-    interpretation: [
-      { condition: 'Oba rosną', signal: 'bullish', text: '🟢 Nowy kapitał wchodzi na rynek' },
-      { condition: 'USDC rośnie > USDT', signal: 'bullish', text: '🟢 Kapitał instytucjonalny napływa' },
-      { condition: 'Oba spadają', signal: 'bearish', text: '🔴 Kapitał opuszcza ekosystem crypto' },
-      { condition: 'USDT rośnie, USDC spada', signal: 'neutral', text: '🟡 Rotacja między stablecoinami' }
-    ],
-    tip: 'Rosnąca podaż stablecoinów to paliwo dla przyszłych wzrostów. USDC preferowany przez instytucje.',
-    source: 'DefiLlama API (LIVE)'
-  },
-  technicalAnalysis: {
-    title: '📊 Analiza Techniczna',
-    emoji: '📊',
-    description: 'Widget TradingView pokazujący sygnały Buy/Sell na podstawie oscylatorów i średnich kroczących.',
-    interpretation: [
-      { condition: 'Strong Buy', signal: 'bullish', text: '🟢 Większość wskaźników bullish' },
-      { condition: 'Buy', signal: 'bullish', text: '🟢 Przewaga wskaźników bullish' },
-      { condition: 'Neutral', signal: 'neutral', text: '🟡 Brak wyraźnego kierunku' },
-      { condition: 'Sell', signal: 'bearish', text: '🔴 Przewaga wskaźników bearish' },
-      { condition: 'Strong Sell', signal: 'bearish', text: '🔴 Większość wskaźników bearish' }
-    ],
-    tip: 'Używaj różnych interwałów czasowych - 1D dla trendu, 1H dla wejść.',
-    source: 'TradingView (LIVE)'
-  }
+  dayTradingScore: { title: '🎯 Day Trading Score', emoji: '🎯', description: 'Wskaźnik dla aktywnych traderów. Horyzont: godziny do dni.', interpretation: [{ condition: '70-100', signal: 'bullish', text: '🟢 AKUMULUJ' }, { condition: '55-69', signal: 'bullish', text: '🟢 HOLD+' }, { condition: '45-54', signal: 'neutral', text: '🟡 HOLD' }, { condition: '30-44', signal: 'warning', text: '🟠 OSTROŻNIE' }, { condition: '0-29', signal: 'bearish', text: '🔴 REDUKUJ' }], tip: 'Składowe: Fear & Greed, Funding Rate, Momentum BTC, Long/Short Ratio.', source: 'CoinGecko, Binance' },
+  swingScore: { title: '📊 Swing Score', emoji: '📊', description: 'Wskaźnik dla swing traderów. Horyzont: tygodnie.', interpretation: [{ condition: '70-100', signal: 'bullish', text: '🟢 AKUMULUJ' }, { condition: '55-69', signal: 'bullish', text: '🟢 HOLD+' }, { condition: '45-54', signal: 'neutral', text: '🟡 HOLD' }, { condition: '30-44', signal: 'warning', text: '🟠 OSTROŻNIE' }, { condition: '0-29', signal: 'bearish', text: '🔴 REDUKUJ' }], tip: 'Składowe: TVL trend, BTC Dominance, Stablecoin inflows.', source: 'DefiLlama, CoinGecko' },
+  hodlScore: { title: '🏦 HODL Score', emoji: '🏦', description: 'Wskaźnik dla długoterminowych inwestorów. Horyzont: miesiące.', interpretation: [{ condition: '70-100', signal: 'bullish', text: '🟢 AKUMULUJ' }, { condition: '55-69', signal: 'bullish', text: '🟢 HOLD+' }, { condition: '45-54', signal: 'neutral', text: '🟡 HOLD' }, { condition: '30-44', signal: 'warning', text: '🟠 OSTROŻNIE' }, { condition: '0-29', signal: 'bearish', text: '🔴 REDUKUJ' }], tip: 'Składowe: M2 Money Supply, Stablecoin supply, TVL, F&G ekstrema.', source: 'FRED, DefiLlama' },
+  fearGreed: { title: '😱 Fear & Greed Index', emoji: '😱', description: 'Wskaźnik sentymentu rynku 0-100.', interpretation: [{ condition: '0-25', signal: 'bullish', text: '🟢 Extreme Fear - okazja' }, { condition: '26-45', signal: 'bullish', text: '🟢 Fear - akumuluj' }, { condition: '46-55', signal: 'neutral', text: '🟡 Neutral' }, { condition: '56-75', signal: 'warning', text: '🟠 Greed - ostrożnie' }, { condition: '76-100', signal: 'bearish', text: '🔴 Extreme Greed - realizuj' }], tip: 'Kontrariański wskaźnik.', source: 'Alternative.me' },
+  fundingRate: { title: '💸 Funding Rate', emoji: '💸', description: 'Opłata między long/short na perpetuals.', interpretation: [{ condition: '> 0.05%', signal: 'bearish', text: '🔴 Overleveraged' }, { condition: '0-0.03%', signal: 'neutral', text: '🟡 Neutral' }, { condition: '< 0', signal: 'bullish', text: '🟢 Bearish sentiment' }], tip: 'Wysoki funding = lokalne szczyty.', source: 'Binance API' },
+  portfolio: { title: '💼 Portfolio', emoji: '💼', description: 'Twoje portfolio na Binance.', interpretation: [{ condition: 'Połączony', signal: 'bullish', text: '🟢 API działa' }, { condition: 'Błąd', signal: 'bearish', text: '🔴 Sprawdź klucze' }], tip: 'Nigdy nie włączaj Withdrawals!', source: 'Binance Auth API' }
 };
 
-// ============== HELP MODAL COMPONENT ==============
+// ============== UI COMPONENTS ==============
 const HelpModal = ({ helpKey, onClose, theme }) => {
   const content = helpContent[helpKey];
   if (!content) return null;
-
-  const t = theme === 'dark' ? {
-    bg: 'rgba(15, 23, 42, 0.98)', cardBg: '#1e293b', text: '#f1f5f9', textSecondary: '#94a3b8',
-    border: '#334155', accent: '#3b82f6', positive: '#22c55e', negative: '#ef4444', warning: '#f59e0b'
-  } : {
-    bg: 'rgba(255, 255, 255, 0.98)', cardBg: '#f8fafc', text: '#1e293b', textSecondary: '#64748b',
-    border: '#e2e8f0', accent: '#3b82f6', positive: '#16a34a', negative: '#dc2626', warning: '#d97706'
-  };
-
-  const signalColor = (signal) => {
-    if (signal === 'bullish') return t.positive;
-    if (signal === 'bearish') return t.negative;
-    if (signal === 'warning') return t.warning;
-    return t.warning;
-  };
-
+  const t = theme === 'dark' ? { bg: 'rgba(15,23,42,0.98)', cardBg: '#1e293b', text: '#f1f5f9', textSecondary: '#94a3b8', border: '#334155', accent: '#3b82f6', positive: '#22c55e', negative: '#ef4444', warning: '#f59e0b' } : { bg: 'rgba(255,255,255,0.98)', cardBg: '#f8fafc', text: '#1e293b', textSecondary: '#64748b', border: '#e2e8f0', accent: '#3b82f6', positive: '#16a34a', negative: '#dc2626', warning: '#d97706' };
+  const signalColor = (signal) => signal === 'bullish' ? t.positive : signal === 'bearish' ? t.negative : t.warning;
   return (
-    <div onClick={onClose} style={{
-      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-      background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      zIndex: 1000, padding: '16px', animation: 'fadeIn 0.2s ease'
-    }}>
-      <div onClick={e => e.stopPropagation()} style={{
-        background: t.bg, borderRadius: '16px', maxWidth: '420px', width: '100%',
-        maxHeight: '80vh', overflow: 'auto', border: `1px solid ${t.border}`,
-        boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)', animation: 'slideUp 0.3s ease'
-      }}>
-        <div style={{
-          padding: '16px', borderBottom: `1px solid ${t.border}`,
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          position: 'sticky', top: 0, background: t.bg, borderRadius: '16px 16px 0 0'
-        }}>
+    <div onClick={onClose} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: t.bg, borderRadius: '16px', maxWidth: '420px', width: '100%', maxHeight: '80vh', overflow: 'auto', border: `1px solid ${t.border}` }}>
+        <div style={{ padding: '16px', borderBottom: `1px solid ${t.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <span style={{ fontSize: '24px' }}>{content.emoji}</span>
             <h3 style={{ margin: 0, color: t.text, fontSize: '16px', fontWeight: '600' }}>{content.title}</h3>
           </div>
-          <button onClick={onClose} style={{
-            background: 'none', border: 'none', color: t.textSecondary,
-            fontSize: '24px', cursor: 'pointer', padding: '4px 8px', borderRadius: '8px'
-          }}>×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: t.textSecondary, fontSize: '24px', cursor: 'pointer' }}>×</button>
         </div>
         <div style={{ padding: '16px' }}>
-          <p style={{
-            color: t.text, fontSize: '13px', lineHeight: '1.5', margin: '0 0 16px',
-            padding: '10px', background: t.cardBg, borderRadius: '8px', border: `1px solid ${t.border}`
-          }}>{content.description}</p>
-          <div style={{ marginBottom: '16px' }}>
-            <h4 style={{ color: t.text, fontSize: '12px', fontWeight: '600', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>📖 Interpretacja</h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {content.interpretation.map((item, i) => {
-                const color = signalColor(item.signal);
-                return (
-                  <div key={i} style={{
-                    padding: '10px 12px',
-                    background: `${color}15`,
-                    borderRadius: '10px',
-                    borderLeft: `6px solid ${color}`,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '4px'
-                  }}>
-                    <span style={{ color: t.textSecondary, fontSize: '11px', fontFamily: 'monospace', fontWeight: '500' }}>{item.condition}</span>
-                    <span style={{ color: color, fontSize: '13px', fontWeight: '600' }}>{item.text}</span>
-                  </div>
-                );
-              })}
-            </div>
+          <p style={{ color: t.text, fontSize: '13px', margin: '0 0 16px', padding: '10px', background: t.cardBg, borderRadius: '8px' }}>{content.description}</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+            {content.interpretation.map((item, i) => (
+              <div key={i} style={{ padding: '10px 12px', background: `${signalColor(item.signal)}15`, borderRadius: '10px', borderLeft: `6px solid ${signalColor(item.signal)}` }}>
+                <span style={{ color: t.textSecondary, fontSize: '11px', fontFamily: 'monospace' }}>{item.condition}</span>
+                <span style={{ color: signalColor(item.signal), fontSize: '13px', fontWeight: '600', marginLeft: '8px' }}>{item.text}</span>
+              </div>
+            ))}
           </div>
-          <div style={{
-            padding: '12px', background: `${t.accent}15`, borderRadius: '8px',
-            border: `1px solid ${t.accent}30`, marginBottom: '12px'
-          }}>
-            <div style={{ color: t.accent, fontSize: '10px', fontWeight: '600', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>💡 Pro Tip</div>
-            <p style={{ color: t.text, fontSize: '12px', lineHeight: '1.4', margin: 0 }}>{content.tip}</p>
+          <div style={{ padding: '12px', background: `${t.accent}15`, borderRadius: '8px', marginBottom: '12px' }}>
+            <div style={{ color: t.accent, fontSize: '10px', fontWeight: '600', marginBottom: '4px' }}>💡 Pro Tip</div>
+            <p style={{ color: t.text, fontSize: '12px', margin: 0 }}>{content.tip}</p>
           </div>
           <div style={{ fontSize: '10px', color: t.textSecondary, textAlign: 'right' }}>Źródło: {content.source}</div>
         </div>
       </div>
-      <style>{`
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-      `}</style>
     </div>
   );
 };
 
-// ============== HELP BUTTON COMPONENT ==============
-const HelpButton = ({ helpKey, onHelp, theme }) => {
-  const t = theme === 'dark' 
-    ? { bg: '#1e293b', color: '#64748b', hoverBg: '#334155' }
-    : { bg: '#f1f5f9', color: '#64748b', hoverBg: '#e2e8f0' };
-  return (
-    <button 
-      onClick={() => onHelp(helpKey)} 
-      style={{
-        width: '16px', height: '16px',
-        borderRadius: '50%', background: t.bg, border: 'none', color: t.color,
-        fontSize: '9px', fontWeight: '600', cursor: 'pointer', display: 'inline-flex',
-        alignItems: 'center', justifyContent: 'center', marginLeft: '4px',
-        opacity: 0.7, verticalAlign: 'middle'
-      }}
-    >?</button>
-  );
-};
-
-// ============== CARD COMPONENT ==============
 const Card = ({ children, helpKey, onHelp, style, theme, signalColor, isLive }) => {
-  const t = theme === 'dark' ? { cardBg: '#0f172a', border: '#1e293b', helpBg: '#1e293b', helpColor: '#64748b' }
-    : { cardBg: '#ffffff', border: '#e2e8f0', helpBg: '#f1f5f9', helpColor: '#64748b' };
+  const t = theme === 'dark' ? { cardBg: '#0f172a', border: '#1e293b', helpBg: '#1e293b', helpColor: '#64748b' } : { cardBg: '#ffffff', border: '#e2e8f0', helpBg: '#f1f5f9', helpColor: '#64748b' };
   return (
-    <div style={{ 
-      position: 'relative', 
-      padding: '14px', 
-      background: signalColor ? `${signalColor}08` : t.cardBg, 
-      borderRadius: '12px', 
-      border: `1px solid ${t.border}`,
-      borderLeft: signalColor ? `5px solid ${signalColor}` : `1px solid ${t.border}`,
-      ...style 
-    }}>
-      {/* Help button - prawy górny róg */}
-      {helpKey && (
-        <button onClick={() => onHelp(helpKey)} style={{
-          position: 'absolute', top: '8px', right: '8px',
-          width: '22px', height: '22px',
-          borderRadius: '50%', background: t.helpBg, border: 'none', color: t.helpColor,
-          fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'flex',
-          alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s', opacity: 0.7,
-          zIndex: 10
-        }}>?</button>
-      )}
-      
-      {/* Live badge - prawy dolny róg */}
-      {isLive && (
-        <span style={{
-          position: 'absolute', bottom: '6px', right: '8px',
-          fontSize: '8px', padding: '2px 5px', borderRadius: '4px',
-          background: theme === 'dark' ? '#22c55e18' : '#16a34a15',
-          color: theme === 'dark' ? '#22c55e' : '#16a34a',
-          fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px'
-        }}>
-          <span style={{ 
-            width: '5px', height: '5px', borderRadius: '50%', 
-            background: theme === 'dark' ? '#22c55e' : '#16a34a',
-            animation: 'pulse 2s infinite'
-          }}></span>
-          LIVE
-        </span>
-      )}
-      
+    <div style={{ position: 'relative', padding: '14px', background: signalColor ? `${signalColor}08` : t.cardBg, borderRadius: '12px', border: `1px solid ${t.border}`, borderLeft: signalColor ? `5px solid ${signalColor}` : `1px solid ${t.border}`, ...style }}>
+      {helpKey && <button onClick={() => onHelp(helpKey)} style={{ position: 'absolute', top: '8px', right: '8px', width: '22px', height: '22px', borderRadius: '50%', background: t.helpBg, border: 'none', color: t.helpColor, fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.7, zIndex: 10 }}>?</button>}
+      {isLive && <span style={{ position: 'absolute', bottom: '6px', right: '8px', fontSize: '8px', padding: '2px 5px', borderRadius: '4px', background: theme === 'dark' ? '#22c55e18' : '#16a34a15', color: theme === 'dark' ? '#22c55e' : '#16a34a', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px' }}><span style={{ width: '5px', height: '5px', borderRadius: '50%', background: theme === 'dark' ? '#22c55e' : '#16a34a', animation: 'pulse 2s infinite' }}></span>LIVE</span>}
       {children}
-      <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
-        }
-      `}</style>
+      <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }`}</style>
     </div>
   );
 };
 
-// ============== LIVE TAG ==============
-const LiveTag = ({ theme }) => (
-  <span style={{
-    fontSize: '9px', padding: '2px 5px', borderRadius: '4px',
-    background: theme === 'dark' ? '#22c55e20' : '#16a34a20',
-    color: theme === 'dark' ? '#22c55e' : '#16a34a',
-    fontWeight: '600', marginLeft: '6px'
-  }}>● LIVE</span>
-);
+const LiveTag = ({ theme }) => <span style={{ fontSize: '9px', padding: '2px 5px', borderRadius: '4px', background: theme === 'dark' ? '#22c55e20' : '#16a34a20', color: theme === 'dark' ? '#22c55e' : '#16a34a', fontWeight: '600', marginLeft: '6px' }}>● LIVE</span>;
 
-// ============== API STATUS BADGE ==============
 const ApiStatusBadge = ({ status, label, theme }) => {
-  const colors = {
-    live: theme === 'dark' ? '#22c55e' : '#16a34a',
-    loading: theme === 'dark' ? '#f59e0b' : '#d97706',
-    error: theme === 'dark' ? '#ef4444' : '#dc2626',
-    offline: theme === 'dark' ? '#64748b' : '#94a3b8'
-  };
+  const colors = { live: theme === 'dark' ? '#22c55e' : '#16a34a', loading: theme === 'dark' ? '#f59e0b' : '#d97706', error: theme === 'dark' ? '#ef4444' : '#dc2626', offline: theme === 'dark' ? '#64748b' : '#94a3b8' };
   const color = colors[status] || colors.offline;
-  
-  return (
-    <span style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: '4px',
-      padding: '2px 6px',
-      borderRadius: '4px',
-      background: `${color}18`,
-      fontSize: '9px',
-      fontWeight: '600',
-      color: color
-    }}>
-      <span style={{
-        width: '5px',
-        height: '5px',
-        borderRadius: '50%',
-        background: color,
-        animation: status === 'live' ? 'pulse 2s infinite' : 'none'
-      }} />
-      {label}
-    </span>
-  );
+  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 6px', borderRadius: '4px', background: `${color}18`, fontSize: '9px', fontWeight: '600', color }}><span style={{ width: '5px', height: '5px', borderRadius: '50%', background: color, animation: status === 'live' ? 'pulse 2s infinite' : 'none' }} />{label}</span>;
 };
 
-// ============== MINI SCORE GAUGE (for 3 scores) ==============
-// V2: Kolorowe segmenty + needle + bez artefaktów renderowania
-const MiniScoreGauge = ({ score, label, icon, color, subtitle, onHelp, theme }) => {
+const MiniScoreGauge = ({ score, label, icon, subtitle, onHelp, theme }) => {
   const isDark = theme === 'dark';
-  const t = isDark ? { text: '#f1f5f9', textSecondary: '#64748b', bg: '#1e293b' }
-    : { text: '#1e293b', textSecondary: '#64748b', bg: '#e2e8f0' };
-  
-  // Sygnał i kolor na podstawie score
-  const getSignalInfo = (s) => {
-    if (s >= 70) return { text: 'AKUMULUJ', color: '#22c55e' };
-    if (s >= 55) return { text: 'HOLD+', color: '#84cc16' };
-    if (s >= 45) return { text: 'HOLD', color: '#eab308' };
-    if (s >= 30) return { text: 'OSTROŻNIE', color: '#f97316' };
-    return { text: 'REDUKUJ', color: '#ef4444' };
-  };
-  
+  const t = isDark ? { text: '#f1f5f9', textSecondary: '#64748b' } : { text: '#1e293b', textSecondary: '#64748b' };
+  const getSignalInfo = (s) => { if (s >= 70) return { text: 'AKUMULUJ', color: '#22c55e' }; if (s >= 55) return { text: 'HOLD+', color: '#84cc16' }; if (s >= 45) return { text: 'HOLD', color: '#eab308' }; if (s >= 30) return { text: 'OSTROŻNIE', color: '#f97316' }; return { text: 'REDUKUJ', color: '#ef4444' }; };
   const signal = getSignalInfo(score);
   const needleAngle = -90 + (score / 100) * 180;
-  
-  // 5 kolorów dla segmentów gauge'a (czerwony → zielony)
   const gaugeColors = ['#ef4444', '#f97316', '#eab308', '#84cc16', '#22c55e'];
-  
   return (
-    <div style={{ 
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      width: '108px',
-      padding: '6px',
-      background: isDark ? 'rgba(30,41,59,0.4)' : 'rgba(241,245,249,0.6)',
-      borderRadius: '10px'
-    }}>
-      {/* Header: Label + Help */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        width: '100%',
-        marginBottom: '2px'
-      }}>
-        <span style={{ fontSize: '10px', fontWeight: '600', color: t.text }}>
-          {icon} {label}
-        </span>
-        <button onClick={onHelp} style={{
-          width: '16px', height: '16px', borderRadius: '50%',
-          background: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
-          border: 'none', color: t.textSecondary, fontSize: '9px',
-          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
-        }}>?</button>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '108px', padding: '6px', background: isDark ? 'rgba(30,41,59,0.4)' : 'rgba(241,245,249,0.6)', borderRadius: '10px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: '2px' }}>
+        <span style={{ fontSize: '10px', fontWeight: '600', color: t.text }}>{icon} {label}</span>
+        <button onClick={onHelp} style={{ width: '16px', height: '16px', borderRadius: '50%', background: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', border: 'none', color: t.textSecondary, fontSize: '9px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>?</button>
       </div>
-      
-      {/* SVG Gauge z kolorowymi segmentami */}
       <svg viewBox="0 0 100 58" style={{ width: '100%', height: '50px' }}>
-        {/* 5 kolorowych łuków */}
-        {gaugeColors.map((c, i) => {
-          const startAngle = 180 + (i * 36);
-          const endAngle = 180 + ((i + 1) * 36);
-          const startRad = (startAngle * Math.PI) / 180;
-          const endRad = (endAngle * Math.PI) / 180;
-          const cx = 50, cy = 50, r = 38;
-          
-          return (
-            <path
-              key={i}
-              d={`M ${cx + r * Math.cos(startRad)} ${cy + r * Math.sin(startRad)} A ${r} ${r} 0 0 1 ${cx + r * Math.cos(endRad)} ${cy + r * Math.sin(endRad)}`}
-              fill="none"
-              stroke={c}
-              strokeWidth="8"
-              strokeLinecap="round"
-              opacity={isDark ? 0.9 : 0.85}
-            />
-          );
-        })}
-        
-        {/* Needle (wskazówka) */}
-        <g transform={`rotate(${needleAngle}, 50, 50)`}>
-          <line x1="50" y1="50" x2="50" y2="18" stroke={t.text} strokeWidth="2.5" strokeLinecap="round" />
-          <circle cx="50" cy="50" r="4" fill={signal.color} />
-        </g>
+        {gaugeColors.map((c, i) => { const startAngle = 180 + (i * 36); const endAngle = 180 + ((i + 1) * 36); const startRad = (startAngle * Math.PI) / 180; const endRad = (endAngle * Math.PI) / 180; const cx = 50, cy = 50, r = 38; return <path key={i} d={`M ${cx + r * Math.cos(startRad)} ${cy + r * Math.sin(startRad)} A ${r} ${r} 0 0 1 ${cx + r * Math.cos(endRad)} ${cy + r * Math.sin(endRad)}`} fill="none" stroke={c} strokeWidth="8" strokeLinecap="round" opacity={isDark ? 0.9 : 0.85} />; })}
+        <g transform={`rotate(${needleAngle}, 50, 50)`}><line x1="50" y1="50" x2="50" y2="18" stroke={t.text} strokeWidth="2.5" strokeLinecap="round" /><circle cx="50" cy="50" r="4" fill={signal.color} /></g>
       </svg>
-      
-      {/* Score - wycentrowany, bez position absolute */}
-      <div style={{
-        fontSize: '20px',
-        fontWeight: '700',
-        color: signal.color,
-        lineHeight: '1',
-        marginTop: '-8px'
-      }}>
-        {score}
-      </div>
-      
-      {/* Signal badge */}
-      <div style={{
-        marginTop: '3px',
-        padding: '2px 6px',
-        borderRadius: '4px',
-        background: `${signal.color}18`,
-        border: `1px solid ${signal.color}40`,
-        fontSize: '8px',
-        fontWeight: '700',
-        color: signal.color,
-        letterSpacing: '0.3px'
-      }}>
-        {signal.text}
-      </div>
-      
-      {/* Subtitle */}
+      <div style={{ fontSize: '20px', fontWeight: '700', color: signal.color, lineHeight: '1', marginTop: '-8px' }}>{score}</div>
+      <div style={{ marginTop: '3px', padding: '2px 6px', borderRadius: '4px', background: `${signal.color}18`, border: `1px solid ${signal.color}40`, fontSize: '8px', fontWeight: '700', color: signal.color }}>{signal.text}</div>
       <div style={{ fontSize: '8px', color: t.textSecondary, marginTop: '2px' }}>{subtitle}</div>
     </div>
   );
@@ -840,7 +405,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('crypto');
   const [helpModal, setHelpModal] = useState(null);
   
-  // Live data states
+  // Data states
   const [cgData, setCgData] = useState(null);
   const [binanceData, setBinanceData] = useState(null);
   const [defiData, setDefiData] = useState(null);
@@ -850,419 +415,271 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(null);
   
-  // API Status states
-  const [apiStatus, setApiStatus] = useState({
-    coingecko: 'loading',
-    binance: 'loading',
-    defillama: 'loading',
-    fred: 'loading',
-    marketStructure: 'loading'
-  });
+  // API Status
+  const [apiStatus, setApiStatus] = useState({ coingecko: 'loading', binance: 'loading', defillama: 'loading', fred: 'loading', marketStructure: 'loading' });
   
   // Charts state
   const [tvSymbol, setTvSymbol] = useState('BINANCE:BTCUSDT');
   const [chartView, setChartView] = useState('both');
   const [taInterval, setTaInterval] = useState('1D');
   
-  // Mock data for indicators not available via free API
-  const mockData = {
-    dxy: { value: 103.42, change: -1.8 },
-    mvrv: { value: 1.8, zone: 'neutral' },
-    sopr: { value: 0.98 },
-    nupl: { value: 0.42, phase: 'Optimism' },
-    exchangeReserves: { btc: 2.1, trend: 'outflow' },
-    etfFlows: { daily: 245, weekly: 1820 },
-    liquidations: { long: 45.2, short: 12.8, total: 58 }
-  };
+  // ============== PORTFOLIO STATE ==============
+  const [portfolioApiKey, setPortfolioApiKey] = useState('');
+  const [portfolioSecretKey, setPortfolioSecretKey] = useState('');
+  const [portfolioConnected, setPortfolioConnected] = useState(false);
+  const [portfolioLoading, setPortfolioLoading] = useState(false);
+  const [portfolioError, setPortfolioError] = useState(null);
+  const [showApiKeys, setShowApiKeys] = useState(false);
+  
+  // Portfolio data
+  const [spotBalance, setSpotBalance] = useState(null);
+  const [futuresBalance, setFuturesBalance] = useState(null);
+  const [futuresPositions, setFuturesPositions] = useState(null);
+  const [openOrders, setOpenOrders] = useState(null);
+  
+  // Trading state
+  const [tradeSymbol, setTradeSymbol] = useState('BTCUSDT');
+  const [tradeMarket, setTradeMarket] = useState('SPOT');
+  const [tradeSide, setTradeSide] = useState('BUY');
+  const [tradeType, setTradeType] = useState('MARKET');
+  const [tradeQuantity, setTradeQuantity] = useState('');
+  const [tradePrice, setTradePrice] = useState('');
+  const [tradeResult, setTradeResult] = useState(null);
+  
+  // Load API keys on mount
+  useEffect(() => {
+    const saved = loadApiKeys();
+    if (saved.apiKey && saved.secretKey) {
+      setPortfolioApiKey(saved.apiKey);
+      setPortfolioSecretKey(saved.secretKey);
+    }
+  }, []);
+  
+  // Mock data
+  const mockData = { dxy: { value: 103.42, change: -1.8 }, liquidations: { long: 45.2, short: 12.8, total: 58 } };
 
-  // Fetch all data
+  // Fetch all public data
   const fetchAllData = useCallback(async () => {
     setLoading(true);
-    setApiStatus({
-      coingecko: 'loading',
-      binance: 'loading',
-      defillama: 'loading',
-      fred: 'loading',
-      marketStructure: 'loading'
-    });
-    
-    const [cg, bn, defi, fred, ms, altseason] = await Promise.all([
-      fetchCoinGeckoData(),
-      fetchBinanceData(),
-      fetchDefiLlamaData(),
-      fetchFredData(),
-      fetchMarketStructure(),
-      fetchAltseasonData()
-    ]);
-    
-    if (cg) { setCgData(cg); setApiStatus(prev => ({ ...prev, coingecko: 'live' })); }
-    else { setApiStatus(prev => ({ ...prev, coingecko: 'error' })); }
-    
-    if (bn) { setBinanceData(bn); setApiStatus(prev => ({ ...prev, binance: 'live' })); }
-    else { setApiStatus(prev => ({ ...prev, binance: 'error' })); }
-    
-    if (defi) { setDefiData(defi); setApiStatus(prev => ({ ...prev, defillama: 'live' })); }
-    else { setApiStatus(prev => ({ ...prev, defillama: 'error' })); }
-    
-    if (fred) { setFredData(fred); setApiStatus(prev => ({ ...prev, fred: 'live' })); }
-    else { setApiStatus(prev => ({ ...prev, fred: 'error' })); }
-    
-    if (ms) { setMsData(ms); setApiStatus(prev => ({ ...prev, marketStructure: 'live' })); }
-    else { setApiStatus(prev => ({ ...prev, marketStructure: 'error' })); }
-    
+    setApiStatus({ coingecko: 'loading', binance: 'loading', defillama: 'loading', fred: 'loading', marketStructure: 'loading' });
+    const [cg, bn, defi, fred, ms, altseason] = await Promise.all([fetchCoinGeckoData(), fetchBinanceData(), fetchDefiLlamaData(), fetchFredData(), fetchMarketStructure(), fetchAltseasonData()]);
+    if (cg) { setCgData(cg); setApiStatus(prev => ({ ...prev, coingecko: 'live' })); } else { setApiStatus(prev => ({ ...prev, coingecko: 'error' })); }
+    if (bn) { setBinanceData(bn); setApiStatus(prev => ({ ...prev, binance: 'live' })); } else { setApiStatus(prev => ({ ...prev, binance: 'error' })); }
+    if (defi) { setDefiData(defi); setApiStatus(prev => ({ ...prev, defillama: 'live' })); } else { setApiStatus(prev => ({ ...prev, defillama: 'error' })); }
+    if (fred) { setFredData(fred); setApiStatus(prev => ({ ...prev, fred: 'live' })); } else { setApiStatus(prev => ({ ...prev, fred: 'error' })); }
+    if (ms) { setMsData(ms); setApiStatus(prev => ({ ...prev, marketStructure: 'live' })); } else { setApiStatus(prev => ({ ...prev, marketStructure: 'error' })); }
     if (altseason) { setAltseasonData(altseason); }
-    
     setLastUpdate(new Date());
     setLoading(false);
   }, []);
 
-  useEffect(() => {
-    fetchAllData();
-    const interval = setInterval(fetchAllData, 60000);
-    return () => clearInterval(interval);
-  }, [fetchAllData]);
+  useEffect(() => { fetchAllData(); const interval = setInterval(fetchAllData, 60000); return () => clearInterval(interval); }, [fetchAllData]);
 
-  const t = theme === 'dark' ? {
-    bg: '#030712', cardBg: '#0f172a', text: '#f1f5f9', textSecondary: '#64748b',
-    border: '#1e293b', accent: '#3b82f6', positive: '#22c55e', negative: '#ef4444', warning: '#f59e0b'
-  } : {
-    bg: '#f8fafc', cardBg: '#ffffff', text: '#1e293b', textSecondary: '#64748b',
-    border: '#e2e8f0', accent: '#3b82f6', positive: '#16a34a', negative: '#dc2626', warning: '#d97706'
+  // ============== PORTFOLIO FUNCTIONS ==============
+  const connectPortfolio = async () => {
+    if (!portfolioApiKey || !portfolioSecretKey) { setPortfolioError('Wprowadź API Key i Secret Key'); return; }
+    setPortfolioLoading(true);
+    setPortfolioError(null);
+    
+    const spotResult = await fetchSpotBalance(portfolioApiKey, portfolioSecretKey);
+    if (spotResult.error) {
+      setPortfolioError(spotResult.error);
+      setPortfolioLoading(false);
+      return;
+    }
+    
+    setSpotBalance(spotResult);
+    saveApiKeys(portfolioApiKey, portfolioSecretKey);
+    
+    const [futBal, futPos, orders] = await Promise.all([
+      fetchFuturesBalance(portfolioApiKey, portfolioSecretKey),
+      fetchFuturesPositions(portfolioApiKey, portfolioSecretKey),
+      fetchOpenOrders(portfolioApiKey, portfolioSecretKey)
+    ]);
+    
+    setFuturesBalance(futBal);
+    setFuturesPositions(futPos);
+    setOpenOrders(orders);
+    setPortfolioConnected(true);
+    setPortfolioLoading(false);
+    setShowApiKeys(false);
+  };
+  
+  const refreshPortfolio = async () => {
+    if (!portfolioConnected) return;
+    setPortfolioLoading(true);
+    const [spot, futBal, futPos, orders] = await Promise.all([
+      fetchSpotBalance(portfolioApiKey, portfolioSecretKey),
+      fetchFuturesBalance(portfolioApiKey, portfolioSecretKey),
+      fetchFuturesPositions(portfolioApiKey, portfolioSecretKey),
+      fetchOpenOrders(portfolioApiKey, portfolioSecretKey)
+    ]);
+    setSpotBalance(spot);
+    setFuturesBalance(futBal);
+    setFuturesPositions(futPos);
+    setOpenOrders(orders);
+    setPortfolioLoading(false);
+  };
+  
+  const disconnectPortfolio = () => {
+    clearApiKeys();
+    setPortfolioApiKey('');
+    setPortfolioSecretKey('');
+    setPortfolioConnected(false);
+    setSpotBalance(null);
+    setFuturesBalance(null);
+    setFuturesPositions(null);
+    setOpenOrders(null);
+    setShowApiKeys(false);
+  };
+  
+  const executeTrade = async () => {
+    if (!tradeQuantity) { setTradeResult({ success: false, error: 'Wprowadź ilość' }); return; }
+    setTradeResult(null);
+    
+    let result;
+    if (tradeMarket === 'SPOT') {
+      result = await placeSpotOrder(portfolioApiKey, portfolioSecretKey, tradeSymbol, tradeSide, tradeType, tradeQuantity, tradeType === 'LIMIT' ? tradePrice : null);
+    } else {
+      result = await placeFuturesOrder(portfolioApiKey, portfolioSecretKey, tradeSymbol, tradeSide, tradeType, tradeQuantity, tradeType === 'LIMIT' ? tradePrice : null, false);
+    }
+    
+    setTradeResult(result);
+    if (result.success) { setTimeout(refreshPortfolio, 1000); setTradeQuantity(''); setTradePrice(''); }
+  };
+  
+  const handleClosePosition = async (symbol, positionAmt) => {
+    const result = await closeFuturesPosition(portfolioApiKey, portfolioSecretKey, symbol, positionAmt);
+    if (result.success) { setTimeout(refreshPortfolio, 1000); }
+    else { alert(`Błąd: ${result.error}`); }
+  };
+  
+  const handleCancelOrder = async (symbol, orderId, market) => {
+    const result = await cancelOrder(portfolioApiKey, portfolioSecretKey, symbol, orderId, market);
+    if (result.success) { setTimeout(refreshPortfolio, 1000); }
+    else { alert(`Błąd: ${result.error}`); }
   };
 
-  // ============== THREE SCORE CALCULATIONS ==============
-  
-  // DAY TRADING SCORE (hours-days)
+  // Theme colors
+  const t = theme === 'dark' ? { bg: '#030712', cardBg: '#0f172a', text: '#f1f5f9', textSecondary: '#64748b', border: '#1e293b', accent: '#3b82f6', positive: '#22c55e', negative: '#ef4444', warning: '#f59e0b' } : { bg: '#f8fafc', cardBg: '#ffffff', text: '#1e293b', textSecondary: '#64748b', border: '#e2e8f0', accent: '#3b82f6', positive: '#16a34a', negative: '#dc2626', warning: '#d97706' };
+
+  // Score calculations
   const calculateDayTradingScore = () => {
     let score = 50;
-    
-    // Fear & Greed (contrarian - extreme fear = buy opportunity)
-    if (cgData?.fearGreed) {
-      if (cgData.fearGreed.value < 20) score += 15;
-      else if (cgData.fearGreed.value < 35) score += 10;
-      else if (cgData.fearGreed.value > 80) score -= 15;
-      else if (cgData.fearGreed.value > 65) score -= 5;
-    }
-    
-    // Funding Rate
-    if (binanceData?.fundingRate) {
-      if (binanceData.fundingRate.value < -0.01) score += 10;
-      else if (binanceData.fundingRate.value < 0) score += 5;
-      else if (binanceData.fundingRate.value > 0.05) score -= 12;
-      else if (binanceData.fundingRate.value > 0.03) score -= 5;
-    }
-    
-    // BTC 24h momentum
-    if (cgData?.btcPrice?.change > 5) score += 8;
-    else if (cgData?.btcPrice?.change > 2) score += 4;
-    else if (cgData?.btcPrice?.change < -5) score -= 8;
-    else if (cgData?.btcPrice?.change < -2) score -= 4;
-    
-    // Long/Short ratio (contrarian)
-    if (binanceData?.longShortRatio?.value < 0.9) score += 6;
-    else if (binanceData?.longShortRatio?.value > 1.8) score -= 6;
-    
+    if (cgData?.fearGreed) { if (cgData.fearGreed.value < 20) score += 15; else if (cgData.fearGreed.value < 35) score += 10; else if (cgData.fearGreed.value > 80) score -= 15; else if (cgData.fearGreed.value > 65) score -= 5; }
+    if (binanceData?.fundingRate) { if (binanceData.fundingRate.value < -0.01) score += 10; else if (binanceData.fundingRate.value < 0) score += 5; else if (binanceData.fundingRate.value > 0.05) score -= 12; else if (binanceData.fundingRate.value > 0.03) score -= 5; }
+    if (cgData?.btcPrice?.change > 5) score += 8; else if (cgData?.btcPrice?.change > 2) score += 4; else if (cgData?.btcPrice?.change < -5) score -= 8; else if (cgData?.btcPrice?.change < -2) score -= 4;
+    if (binanceData?.longShortRatio?.value < 0.9) score += 6; else if (binanceData?.longShortRatio?.value > 1.8) score -= 6;
     return Math.max(0, Math.min(100, Math.round(score)));
   };
-  
-  // SWING SCORE (weeks)
+
   const calculateSwingScore = () => {
     let score = 50;
-    
-    // Fear & Greed
-    if (cgData?.fearGreed) {
-      if (cgData.fearGreed.value < 25) score += 12;
-      else if (cgData.fearGreed.value < 40) score += 6;
-      else if (cgData.fearGreed.value > 75) score -= 10;
-      else if (cgData.fearGreed.value > 60) score -= 4;
-    }
-    
-    // TVL trend (7d)
-    if (defiData?.tvl?.change > 5) score += 10;
-    else if (defiData?.tvl?.change > 2) score += 5;
-    else if (defiData?.tvl?.change < -5) score -= 10;
-    else if (defiData?.tvl?.change < -2) score -= 5;
-    
-    // BTC Dominance
-    if (cgData?.btcDominance?.value > 55) score -= 4;
-    else if (cgData?.btcDominance?.value < 45) score += 4;
-    
-    // Stablecoin inflows
-    if (defiData?.stablecoinSupply?.change > 3) score += 8;
-    else if (defiData?.stablecoinSupply?.change > 1) score += 4;
-    else if (defiData?.stablecoinSupply?.change < -3) score -= 8;
-    else if (defiData?.stablecoinSupply?.change < -1) score -= 4;
-    
-    // Altseason Index (dla altów)
-    if (altseasonData?.altseasonIndex > 70) score += 6;
-    else if (altseasonData?.altseasonIndex > 55) score += 3;
-    else if (altseasonData?.altseasonIndex < 30) score -= 4;
-    
-    // ETH/BTC Ratio
-    if (altseasonData?.ethBtcRatio > 0.05) score += 4;
-    else if (altseasonData?.ethBtcRatio < 0.035) score -= 4;
-    
+    if (cgData?.fearGreed) { if (cgData.fearGreed.value < 25) score += 12; else if (cgData.fearGreed.value < 40) score += 6; else if (cgData.fearGreed.value > 75) score -= 10; else if (cgData.fearGreed.value > 60) score -= 4; }
+    if (defiData?.tvl?.change > 5) score += 10; else if (defiData?.tvl?.change > 2) score += 5; else if (defiData?.tvl?.change < -5) score -= 10; else if (defiData?.tvl?.change < -2) score -= 5;
+    if (cgData?.btcDominance?.value > 55) score -= 4; else if (cgData?.btcDominance?.value < 45) score += 4;
+    if (defiData?.stablecoinSupply?.change > 3) score += 8; else if (defiData?.stablecoinSupply?.change > 1) score += 4; else if (defiData?.stablecoinSupply?.change < -3) score -= 8; else if (defiData?.stablecoinSupply?.change < -1) score -= 4;
+    if (altseasonData?.altseasonIndex > 70) score += 6; else if (altseasonData?.altseasonIndex > 55) score += 3; else if (altseasonData?.altseasonIndex < 30) score -= 4;
+    if (altseasonData?.ethBtcRatio > 0.05) score += 4; else if (altseasonData?.ethBtcRatio < 0.035) score -= 4;
     return Math.max(0, Math.min(100, Math.round(score)));
   };
-  
-  // HODL SCORE (months-years)
+
   const calculateHodlScore = () => {
     let score = 50;
-    
-    // M2 Supply trend (macro liquidity)
-    if (fredData?.m2Supply?.trend === 'expanding') {
-      if (fredData.m2Supply.change > 5) score += 15;
-      else if (fredData.m2Supply.change > 2) score += 10;
-      else score += 5;
-    } else {
-      if (fredData?.m2Supply?.change < -2) score -= 10;
-      else score -= 5;
-    }
-    
-    // Stablecoin supply (30d - long-term liquidity)
-    if (defiData?.stablecoinSupply?.change > 5) score += 12;
-    else if (defiData?.stablecoinSupply?.change > 2) score += 6;
-    else if (defiData?.stablecoinSupply?.change < -5) score -= 12;
-    else if (defiData?.stablecoinSupply?.change < -2) score -= 6;
-    
-    // TVL as adoption metric
-    if (defiData?.tvl?.change > 8) score += 8;
-    else if (defiData?.tvl?.change > 3) score += 4;
-    else if (defiData?.tvl?.change < -8) score -= 8;
-    else if (defiData?.tvl?.change < -3) score -= 4;
-    
-    // Fear & Greed (extremes for long-term accumulation)
-    if (cgData?.fearGreed) {
-      if (cgData.fearGreed.value < 20) score += 8;
-      else if (cgData.fearGreed.value < 35) score += 4;
-      else if (cgData.fearGreed.value > 85) score -= 8;
-      else if (cgData.fearGreed.value > 70) score -= 4;
-    }
-    
-    // USDT/USDC flows (instytucjonalny kapitał)
-    if (altseasonData?.stablecoins) {
-      const totalChange = (altseasonData.stablecoins.usdt?.change7d || 0) + 
-                          (altseasonData.stablecoins.usdc?.change7d || 0);
-      if (totalChange > 2) score += 6;
-      else if (totalChange > 0.5) score += 3;
-      else if (totalChange < -2) score -= 6;
-      else if (totalChange < -0.5) score -= 3;
-    }
-    
+    if (fredData?.m2Supply?.trend === 'expanding') { if (fredData.m2Supply.change > 5) score += 15; else if (fredData.m2Supply.change > 2) score += 10; else score += 5; } else { if (fredData?.m2Supply?.change < -2) score -= 10; else score -= 5; }
+    if (defiData?.stablecoinSupply?.change > 5) score += 12; else if (defiData?.stablecoinSupply?.change > 2) score += 6; else if (defiData?.stablecoinSupply?.change < -5) score -= 12; else if (defiData?.stablecoinSupply?.change < -2) score -= 6;
+    if (defiData?.tvl?.change > 8) score += 8; else if (defiData?.tvl?.change > 3) score += 4; else if (defiData?.tvl?.change < -8) score -= 8; else if (defiData?.tvl?.change < -3) score -= 4;
+    if (cgData?.fearGreed) { if (cgData.fearGreed.value < 20) score += 8; else if (cgData.fearGreed.value < 35) score += 4; else if (cgData.fearGreed.value > 85) score -= 8; else if (cgData.fearGreed.value > 70) score -= 4; }
+    if (altseasonData?.stablecoins) { const totalChange = (altseasonData.stablecoins.usdt?.change7d || 0) + (altseasonData.stablecoins.usdc?.change7d || 0); if (totalChange > 2) score += 6; else if (totalChange > 0.5) score += 3; else if (totalChange < -2) score -= 6; else if (totalChange < -0.5) score -= 3; }
     return Math.max(0, Math.min(100, Math.round(score)));
   };
 
   const dayTradingScore = calculateDayTradingScore();
   const swingScore = calculateSwingScore();
   const hodlScore = calculateHodlScore();
-
+  
   const tabs = [
     { id: 'crypto', label: '₿ Crypto' },
     { id: 'structure', label: '📊 Structure' },
     { id: 'macro', label: '🏦 Macro' },
     { id: 'defi', label: '🦙 DeFi' },
     { id: 'derivatives', label: '📉 Deriv' },
-    { id: 'charts', label: '📈 Charts' }
+    { id: 'charts', label: '📈 Charts' },
+    { id: 'portfolio', label: '💼 Portfolio' }
   ];
-
+  
   const formatChange = (val) => val >= 0 ? `+${val}%` : `${val}%`;
+  const formatUSD = (val) => val >= 1000 ? `$${(val/1000).toFixed(1)}k` : `$${val.toFixed(2)}`;
 
   return (
     <div style={{ minHeight: '100vh', background: t.bg, color: t.text, fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
       {/* Header */}
-      <div style={{
-        padding: '10px 12px', borderBottom: `1px solid ${t.border}`,
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        position: 'sticky', top: 0, background: t.bg, zIndex: 100
-      }}>
+      <div style={{ padding: '10px 12px', borderBottom: `1px solid ${t.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: t.bg, zIndex: 100 }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: '15px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            🎯 Crypto Decision Hub
-            {cgData && <LiveTag theme={theme} />}
-          </h1>
-          <span style={{ fontSize: '9px', color: t.textSecondary }}>
-            {lastUpdate ? `${lastUpdate.toLocaleTimeString('pl-PL')}` : 'Ładowanie...'}
-          </span>
+          <h1 style={{ margin: 0, fontSize: '15px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px' }}>🎯 Crypto Decision Hub {cgData && <LiveTag theme={theme} />}</h1>
+          <span style={{ fontSize: '9px', color: t.textSecondary }}>{lastUpdate ? `${lastUpdate.toLocaleTimeString('pl-PL')}` : 'Ładowanie...'}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <button onClick={fetchAllData} disabled={loading} style={{
-            background: t.cardBg, border: `1px solid ${t.border}`, borderRadius: '8px',
-            padding: '5px 8px', cursor: 'pointer', fontSize: '12px', color: t.text
-          }}>{loading ? '⏳' : '🔄'}</button>
-          <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} style={{
-            background: t.cardBg, border: `1px solid ${t.border}`, borderRadius: '8px',
-            padding: '5px 8px', cursor: 'pointer', fontSize: '12px'
-          }}>{theme === 'dark' ? '☀️' : '🌙'}</button>
+          <button onClick={fetchAllData} disabled={loading} style={{ background: t.cardBg, border: `1px solid ${t.border}`, borderRadius: '8px', padding: '5px 8px', cursor: 'pointer', fontSize: '12px', color: t.text }}>{loading ? '⏳' : '🔄'}</button>
+          <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} style={{ background: t.cardBg, border: `1px solid ${t.border}`, borderRadius: '8px', padding: '5px 8px', cursor: 'pointer', fontSize: '12px' }}>{theme === 'dark' ? '☀️' : '🌙'}</button>
         </div>
       </div>
 
-      {/* THREE SCORES CARD */}
+      {/* Three Scores */}
       <div style={{ padding: '12px' }}>
-        <Card theme={theme} style={{ marginBottom: '12px', padding: '12px' }}>
-          <div style={{ 
-            display: 'flex', 
-            gap: '8px', 
-            overflowX: 'auto', 
-            WebkitOverflowScrolling: 'touch',
-            paddingBottom: '8px',
-            justifyContent: 'center'
-          }}>
-            <MiniScoreGauge
-              score={dayTradingScore}
-              label="Day Trading"
-              icon="🎯"
-              color={t.warning}
-              subtitle="godziny-dni"
-              theme={theme}
-              onHelp={() => setHelpModal('dayTradingScore')}
-            />
-            <MiniScoreGauge
-              score={swingScore}
-              label="Swing"
-              icon="📊"
-              color={t.accent}
-              subtitle="tygodnie"
-              theme={theme}
-              onHelp={() => setHelpModal('swingScore')}
-            />
-            <MiniScoreGauge
-              score={hodlScore}
-              label="HODL"
-              icon="🏦"
-              color={t.positive}
-              subtitle="miesiące-lata"
-              theme={theme}
-              onHelp={() => setHelpModal('hodlScore')}
-            />
-          </div>
-          
-          {/* Score components summary */}
-          <div style={{ 
-            marginTop: '10px', padding: '10px', 
-            background: theme === 'dark' ? '#1e293b' : '#f1f5f9', 
-            borderRadius: '8px',
-            fontSize: '10px'
-          }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-              <div>
-                <div style={{ color: t.textSecondary, marginBottom: '4px' }}>🎯 Day ({dayTradingScore})</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
-                  <span style={{ background: `${t.warning}20`, padding: '2px 4px', borderRadius: '4px' }}>
-                    F&G:{cgData?.fearGreed?.value || '-'}
-                  </span>
-                  <span style={{ background: `${t.warning}20`, padding: '2px 4px', borderRadius: '4px' }}>
-                    FR:{binanceData?.fundingRate?.value?.toFixed(3) || '-'}%
-                  </span>
-                </div>
-              </div>
-              <div>
-                <div style={{ color: t.textSecondary, marginBottom: '4px' }}>📊 Swing ({swingScore})</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
-                  <span style={{ background: `${t.accent}20`, padding: '2px 4px', borderRadius: '4px' }}>
-                    TVL:{defiData?.tvl?.change || '-'}%
-                  </span>
-                  <span style={{ background: `${t.accent}20`, padding: '2px 4px', borderRadius: '4px' }}>
-                    BTC.D:{cgData?.btcDominance?.value || '-'}%
-                  </span>
-                </div>
-              </div>
-              <div>
-                <div style={{ color: t.textSecondary, marginBottom: '4px' }}>🏦 HODL ({hodlScore})</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
-                  <span style={{ background: `${t.positive}20`, padding: '2px 4px', borderRadius: '4px' }}>
-                    M2:{fredData?.m2Supply?.trend === 'expanding' ? '📈' : '📉'}
-                  </span>
-                  <span style={{ background: `${t.positive}20`, padding: '2px 4px', borderRadius: '4px' }}>
-                    Stb:{defiData?.stablecoinSupply?.change || '-'}%
-                  </span>
-                </div>
-              </div>
-            </div>
+        <Card theme={theme}>
+          <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+            <MiniScoreGauge score={dayTradingScore} label="Day" icon="🎯" subtitle="godziny-dni" onHelp={() => setHelpModal('dayTradingScore')} theme={theme} />
+            <MiniScoreGauge score={swingScore} label="Swing" icon="📊" subtitle="tygodnie" onHelp={() => setHelpModal('swingScore')} theme={theme} />
+            <MiniScoreGauge score={hodlScore} label="HODL" icon="🏦" subtitle="miesiące" onHelp={() => setHelpModal('hodlScore')} theme={theme} />
           </div>
         </Card>
       </div>
 
-      {/* API Status */}
-      <div style={{ padding: '0 12px 6px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-        {[
-          { name: 'CG', status: cgData },
-          { name: 'BN', status: binanceData },
-          { name: 'DL', status: defiData },
-          { name: 'FR', status: fredData }
-        ].map(api => (
-          <span key={api.name} style={{
-            fontSize: '8px', padding: '2px 5px', borderRadius: '4px',
-            background: api.status ? `${t.positive}20` : `${t.negative}20`,
-            color: api.status ? t.positive : t.negative
-          }}>{api.status ? '●' : '○'} {api.name}</span>
-        ))}
-      </div>
-
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: '4px', padding: '6px 12px', overflowX: 'auto', borderBottom: `1px solid ${t.border}` }}>
-        {tabs.map(tab => (
-          <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
-            padding: '5px 10px', borderRadius: '14px', border: 'none',
-            background: activeTab === tab.id ? t.accent : t.cardBg,
-            color: activeTab === tab.id ? '#fff' : t.textSecondary,
-            fontSize: '11px', fontWeight: '500', cursor: 'pointer', whiteSpace: 'nowrap'
-          }}>{tab.label}</button>
-        ))}
+      <div style={{ padding: '0 12px', marginBottom: '10px' }}>
+        <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', paddingBottom: '5px' }}>
+          {tabs.map(tab => (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
+              padding: '7px 12px', borderRadius: '8px', border: 'none', whiteSpace: 'nowrap',
+              background: activeTab === tab.id ? t.accent : t.cardBg,
+              color: activeTab === tab.id ? '#fff' : t.textSecondary,
+              fontSize: '11px', fontWeight: '600', cursor: 'pointer'
+            }}>{tab.label}</button>
+          ))}
+        </div>
       </div>
 
-      {/* Content */}
-      <div style={{ padding: '12px', maxWidth: '900px', margin: '0 auto' }}>
+      {/* Tab Content */}
+      <div style={{ padding: '0 12px 80px' }}>
         
         {/* CRYPTO TAB */}
         {activeTab === 'crypto' && (
           <div style={{ display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))' }}>
-            <Card helpKey="btcPrice" onHelp={setHelpModal} theme={theme}
-              signalColor={(cgData?.btcPrice?.change || 0) >= 0 ? t.positive : t.negative}
-              isLive={!!cgData?.btcPrice}>
+            <Card helpKey="btcPrice" onHelp={setHelpModal} theme={theme} signalColor={(cgData?.btcPrice?.change || 0) >= 0 ? t.positive : t.negative} isLive={!!cgData?.btcPrice}>
               <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>₿ Bitcoin</div>
               <div style={{ fontSize: '18px', fontWeight: '700' }}>${cgData?.btcPrice?.value?.toLocaleString() || '---'}</div>
-              <span style={{ fontSize: '11px', color: (cgData?.btcPrice?.change || 0) >= 0 ? t.positive : t.negative }}>
-                {cgData?.btcPrice?.change ? formatChange(cgData.btcPrice.change) : '---'}
-              </span>
+              <span style={{ fontSize: '11px', color: (cgData?.btcPrice?.change || 0) >= 0 ? t.positive : t.negative }}>{cgData?.btcPrice?.change ? formatChange(cgData.btcPrice.change) : '---'}</span>
             </Card>
-
-            <Card helpKey="ethPrice" onHelp={setHelpModal} theme={theme}
-              signalColor={(cgData?.ethPrice?.change || 0) >= 0 ? t.positive : t.negative}
-              isLive={!!cgData?.ethPrice}>
+            <Card helpKey="ethPrice" onHelp={setHelpModal} theme={theme} signalColor={(cgData?.ethPrice?.change || 0) >= 0 ? t.positive : t.negative} isLive={!!cgData?.ethPrice}>
               <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>◆ Ethereum</div>
               <div style={{ fontSize: '18px', fontWeight: '700' }}>${cgData?.ethPrice?.value?.toLocaleString() || '---'}</div>
-              <span style={{ fontSize: '11px', color: (cgData?.ethPrice?.change || 0) >= 0 ? t.positive : t.negative }}>
-                {cgData?.ethPrice?.change ? formatChange(cgData.ethPrice.change) : '---'}
-              </span>
+              <span style={{ fontSize: '11px', color: (cgData?.ethPrice?.change || 0) >= 0 ? t.positive : t.negative }}>{cgData?.ethPrice?.change ? formatChange(cgData.ethPrice.change) : '---'}</span>
             </Card>
-
-            <Card helpKey="fearGreed" onHelp={setHelpModal} theme={theme}
-              signalColor={cgData?.fearGreed?.value <= 25 ? t.positive : cgData?.fearGreed?.value >= 75 ? t.negative : cgData?.fearGreed?.value <= 45 ? '#84cc16' : t.warning}
-              isLive={!!cgData?.fearGreed}>
+            <Card theme={theme} signalColor={(cgData?.solPrice?.change || 0) >= 0 ? t.positive : t.negative} isLive={!!cgData?.solPrice}>
+              <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>◎ Solana</div>
+              <div style={{ fontSize: '18px', fontWeight: '700' }}>${cgData?.solPrice?.value || '---'}</div>
+              <span style={{ fontSize: '11px', color: (cgData?.solPrice?.change || 0) >= 0 ? t.positive : t.negative }}>{cgData?.solPrice?.change ? formatChange(cgData.solPrice.change) : '---'}</span>
+            </Card>
+            <Card helpKey="fearGreed" onHelp={setHelpModal} theme={theme} signalColor={(cgData?.fearGreed?.value || 50) < 35 ? t.positive : (cgData?.fearGreed?.value || 50) > 65 ? t.negative : t.warning} isLive={!!cgData?.fearGreed}>
               <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>😱 Fear & Greed</div>
-              <div style={{ fontSize: '18px', fontWeight: '700', color: cgData?.fearGreed?.value > 60 ? t.warning : cgData?.fearGreed?.value < 40 ? t.positive : t.text }}>
-                {cgData?.fearGreed?.value || '---'}
-              </div>
+              <div style={{ fontSize: '18px', fontWeight: '700' }}>{cgData?.fearGreed?.value || '---'}</div>
               <span style={{ fontSize: '10px', color: t.textSecondary }}>{cgData?.fearGreed?.label || '---'}</span>
             </Card>
-
-            <Card helpKey="btcDominance" onHelp={setHelpModal} theme={theme}
-              signalColor={(cgData?.btcDominance?.value || 50) < 45 ? t.positive : (cgData?.btcDominance?.value || 50) > 55 ? t.warning : '#64748b'}
-              isLive={!!cgData?.btcDominance}>
+            <Card helpKey="btcDominance" onHelp={setHelpModal} theme={theme} isLive={!!cgData?.btcDominance}>
               <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>👑 BTC Dominance</div>
               <div style={{ fontSize: '18px', fontWeight: '700' }}>{cgData?.btcDominance?.value || '---'}%</div>
             </Card>
-
-            <Card theme={theme}
-              signalColor={(cgData?.solPrice?.change || 0) >= 0 ? t.positive : t.negative}
-              isLive={!!cgData?.solPrice}>
-              <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>◎ Solana</div>
-              <div style={{ fontSize: '18px', fontWeight: '700' }}>${cgData?.solPrice?.value || '---'}</div>
-              <span style={{ fontSize: '11px', color: (cgData?.solPrice?.change || 0) >= 0 ? t.positive : t.negative }}>
-                {cgData?.solPrice?.change ? formatChange(cgData.solPrice.change) : '---'}
-              </span>
-            </Card>
-
             <Card theme={theme} isLive={!!cgData?.volume24h}>
               <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>📊 Volume 24h</div>
               <div style={{ fontSize: '18px', fontWeight: '700' }}>${cgData?.volume24h || '---'}B</div>
@@ -1270,547 +687,79 @@ function App() {
           </div>
         )}
 
-        {/* STRUCTURE TAB - Market Structure & Top Gainers/Losers */}
+        {/* STRUCTURE TAB */}
         {activeTab === 'structure' && (
-          <div style={{ display: 'grid', gap: '12px' }}>
-            {/* API Status Bar */}
-            <div style={{ 
-              display: 'flex', 
-              gap: '8px', 
-              flexWrap: 'wrap',
-              padding: '8px 12px',
-              background: t.cardBg,
-              borderRadius: '8px',
-              border: `1px solid ${t.border}`
-            }}>
-              <ApiStatusBadge status={apiStatus.coingecko} label="CoinGecko" theme={theme} />
-              <ApiStatusBadge status={apiStatus.marketStructure} label="MS" theme={theme} />
-              <ApiStatusBadge status={apiStatus.binance} label="Binance" theme={theme} />
-              <ApiStatusBadge status={apiStatus.defillama} label="DefiLlama" theme={theme} />
-            </div>
-
-            {/* Market Breadth */}
-            <Card theme={theme} isLive={!!msData?.marketBreadth}>
-              <div style={{ 
-                display: 'flex', 
-                justifyContent: 'space-between', 
-                alignItems: 'center',
-                marginBottom: '12px'
-              }}>
-                <div style={{ fontSize: '13px', fontWeight: '600' }}>
-                  📊 Market Breadth 
-                  <span style={{ fontSize: '10px', color: t.textSecondary, fontWeight: '400', marginLeft: '6px' }}>
-                    ({msData?.marketBreadth?.total || '...'} par USDT)
-                  </span>
-                </div>
-                <ApiStatusBadge status={apiStatus.marketStructure} label="Binance" theme={theme} />
-              </div>
-              
-              {msData?.marketBreadth ? (
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <div style={{
-                    flex: 1,
-                    padding: '12px',
-                    background: `${t.positive}12`,
-                    borderRadius: '10px',
-                    textAlign: 'center',
-                    border: `1px solid ${t.positive}30`
-                  }}>
-                    <div style={{ fontSize: '26px', fontWeight: '700', color: t.positive }}>
-                      {msData.marketBreadth.gainers}
-                    </div>
-                    <div style={{ fontSize: '10px', color: t.textSecondary, marginTop: '2px' }}>Gainers</div>
-                  </div>
-                  <div style={{
-                    flex: 1,
-                    padding: '12px',
-                    background: `${t.negative}12`,
-                    borderRadius: '10px',
-                    textAlign: 'center',
-                    border: `1px solid ${t.negative}30`
-                  }}>
-                    <div style={{ fontSize: '26px', fontWeight: '700', color: t.negative }}>
-                      {msData.marketBreadth.losers}
-                    </div>
-                    <div style={{ fontSize: '10px', color: t.textSecondary, marginTop: '2px' }}>Losers</div>
-                  </div>
-                  <div style={{
-                    flex: 1,
-                    padding: '12px',
-                    background: `${t.accent}12`,
-                    borderRadius: '10px',
-                    textAlign: 'center',
-                    border: `1px solid ${t.accent}30`
-                  }}>
-                    <div style={{ fontSize: '26px', fontWeight: '700', color: t.accent }}>
-                      {msData.marketBreadth.ratio}%
-                    </div>
-                    <div style={{ fontSize: '10px', color: t.textSecondary, marginTop: '2px' }}>Bullish</div>
-                  </div>
-                </div>
-              ) : (
-                <div style={{ textAlign: 'center', padding: '20px', color: t.textSecondary }}>
-                  ⏳ Ładowanie...
-                </div>
-              )}
-            </Card>
-            
-            {/* Top Gainers & Losers Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              {/* Top Gainers */}
-              <Card theme={theme} isLive={!!msData?.topGainers}>
-                <div style={{ 
-                  fontSize: '12px', 
-                  fontWeight: '600', 
-                  marginBottom: '10px', 
-                  color: t.positive,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}>
-                  🚀 Top Gainers 24h
-                  <span style={{ fontSize: '8px', color: t.textSecondary, fontWeight: '400' }}>Binance</span>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {msData?.topGainers?.slice(0, 5).map((coin, i) => (
-                    <div key={i} style={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between', 
-                      alignItems: 'center',
-                      padding: '6px 8px',
-                      background: `${t.positive}08`,
-                      borderRadius: '6px',
-                      borderLeft: `3px solid ${t.positive}`
-                    }}>
-                      <div>
-                        <span style={{ fontWeight: '600', fontSize: '12px' }}>{coin.name}</span>
-                        <div style={{ fontSize: '9px', color: t.textSecondary }}>
-                          ${coin.price < 1 ? coin.price.toFixed(6) : coin.price.toFixed(2)}
-                        </div>
-                      </div>
-                      <span style={{ 
-                        fontSize: '13px', 
-                        color: t.positive, 
-                        fontWeight: '700',
-                        background: `${t.positive}18`,
-                        padding: '3px 8px',
-                        borderRadius: '4px'
-                      }}>
-                        +{coin.change24h}%
-                      </span>
-                    </div>
-                  )) || (
-                    <div style={{ fontSize: '10px', color: t.textSecondary, textAlign: 'center', padding: '10px' }}>
-                      ⏳ Ładowanie...
-                    </div>
-                  )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {msData?.marketBreadth && (
+              <Card theme={theme}>
+                <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px' }}>📊 Market Breadth ({msData.source})</div>
+                <div style={{ display: 'flex', justifyContent: 'space-around', textAlign: 'center' }}>
+                  <div><div style={{ fontSize: '16px', fontWeight: '700', color: t.positive }}>{msData.marketBreadth.gainers}</div><div style={{ fontSize: '9px', color: t.textSecondary }}>Gainers</div></div>
+                  <div><div style={{ fontSize: '16px', fontWeight: '700', color: t.negative }}>{msData.marketBreadth.losers}</div><div style={{ fontSize: '9px', color: t.textSecondary }}>Losers</div></div>
+                  <div><div style={{ fontSize: '16px', fontWeight: '700', color: t.accent }}>{msData.marketBreadth.ratio}%</div><div style={{ fontSize: '9px', color: t.textSecondary }}>Bullish</div></div>
                 </div>
               </Card>
-              
-              {/* Top Losers */}
-              <Card theme={theme} isLive={!!msData?.topLosers}>
-                <div style={{ 
-                  fontSize: '12px', 
-                  fontWeight: '600', 
-                  marginBottom: '10px', 
-                  color: t.negative,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}>
-                  📉 Top Losers 24h
-                  <span style={{ fontSize: '8px', color: t.textSecondary, fontWeight: '400' }}>Binance</span>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {msData?.topLosers?.slice(0, 5).map((coin, i) => (
-                    <div key={i} style={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between', 
-                      alignItems: 'center',
-                      padding: '6px 8px',
-                      background: `${t.negative}08`,
-                      borderRadius: '6px',
-                      borderLeft: `3px solid ${t.negative}`
-                    }}>
-                      <div>
-                        <span style={{ fontWeight: '600', fontSize: '12px' }}>{coin.name}</span>
-                        <div style={{ fontSize: '9px', color: t.textSecondary }}>
-                          ${coin.price < 1 ? coin.price.toFixed(6) : coin.price.toFixed(2)}
-                        </div>
-                      </div>
-                      <span style={{ 
-                        fontSize: '13px', 
-                        color: t.negative, 
-                        fontWeight: '700',
-                        background: `${t.negative}18`,
-                        padding: '3px 8px',
-                        borderRadius: '4px'
-                      }}>
-                        {coin.change24h}%
-                      </span>
+            )}
+            {msData?.topGainers && (
+              <Card theme={theme}>
+                <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px', color: t.positive }}>🚀 Top 5 Gainers 24h</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                  {msData.topGainers.slice(0, 5).map((coin, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px', background: t.bg, borderRadius: '6px' }}>
+                      <span style={{ fontWeight: '600', fontSize: '11px' }}>{coin.name}</span>
+                      <span style={{ color: t.positive, fontWeight: '600', fontSize: '11px' }}>+{coin.change24h}%</span>
                     </div>
-                  )) || (
-                    <div style={{ fontSize: '10px', color: t.textSecondary, textAlign: 'center', padding: '10px' }}>
-                      ⏳ Ładowanie...
-                    </div>
-                  )}
+                  ))}
                 </div>
               </Card>
-            </div>
-
-            {/* Extended Gainers List */}
-            <Card theme={theme}>
-              <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '10px' }}>
-                📈 Rozszerzona lista (Top 10)
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-                {msData?.topGainers?.slice(5, 10).map((coin, i) => (
-                  <div key={i} style={{ 
-                    display: 'flex', 
-                    justifyContent: 'space-between', 
-                    alignItems: 'center',
-                    padding: '4px 6px',
-                    background: t.cardBg,
-                    borderRadius: '4px',
-                    fontSize: '10px'
-                  }}>
-                    <span style={{ fontWeight: '500' }}>{i + 6}. {coin.name}</span>
-                    <span style={{ color: t.positive, fontWeight: '600' }}>+{coin.change24h}%</span>
-                  </div>
-                ))}
-                {msData?.topLosers?.slice(5, 10).map((coin, i) => (
-                  <div key={i} style={{ 
-                    display: 'flex', 
-                    justifyContent: 'space-between', 
-                    alignItems: 'center',
-                    padding: '4px 6px',
-                    background: t.cardBg,
-                    borderRadius: '4px',
-                    fontSize: '10px'
-                  }}>
-                    <span style={{ fontWeight: '500' }}>{i + 6}. {coin.name}</span>
-                    <span style={{ color: t.negative, fontWeight: '600' }}>{coin.change24h}%</span>
-                  </div>
-                ))}
-              </div>
-            </Card>
-
-            {/* ============ ALTSEASON INDICATORS ============ */}
-            <Card theme={theme}>
-              <div style={{ 
-                display: 'flex', 
-                justifyContent: 'space-between', 
-                alignItems: 'center',
-                marginBottom: '12px'
-              }}>
-                <div style={{ fontSize: '13px', fontWeight: '600' }}>
-                  🎨 Altseason Indicators
+            )}
+            {msData?.topLosers && (
+              <Card theme={theme}>
+                <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px', color: t.negative }}>📉 Top 5 Losers 24h</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                  {msData.topLosers.slice(0, 5).map((coin, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px', background: t.bg, borderRadius: '6px' }}>
+                      <span style={{ fontWeight: '600', fontSize: '11px' }}>{coin.name}</span>
+                      <span style={{ color: t.negative, fontWeight: '600', fontSize: '11px' }}>{coin.change24h}%</span>
+                    </div>
+                  ))}
                 </div>
-                <ApiStatusBadge status={altseasonData ? 'live' : 'loading'} label="CoinGecko" theme={theme} />
-              </div>
-              
-              <div style={{ display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(2, 1fr)' }}>
-                {/* Altseason Index */}
-                <div 
-                  onClick={() => setHelpModal('altseasonIndex')}
-                  style={{
-                  padding: '12px',
-                  background: altseasonData?.altseasonIndex > 60 ? `${t.positive}15` : 
-                             altseasonData?.altseasonIndex < 40 ? `${t.negative}15` : `${t.warning}15`,
-                  borderRadius: '10px',
-                  textAlign: 'center',
-                  border: `1px solid ${altseasonData?.altseasonIndex > 60 ? t.positive : 
-                          altseasonData?.altseasonIndex < 40 ? t.negative : t.warning}30`,
-                  cursor: 'pointer',
-                  position: 'relative'
-                }}>
-                  <div style={{ position: 'absolute', top: '6px', right: '6px', opacity: 0.5, fontSize: '10px' }}>?</div>
-                  <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>
-                    🌊 Altseason Index
-                  </div>
-                  <div style={{ 
-                    fontSize: '28px', 
-                    fontWeight: '700',
-                    color: altseasonData?.altseasonIndex > 60 ? t.positive : 
-                           altseasonData?.altseasonIndex < 40 ? t.negative : t.warning
-                  }}>
-                    {altseasonData?.altseasonIndex || '---'}
-                  </div>
-                  <div style={{ fontSize: '9px', color: t.textSecondary, marginTop: '2px' }}>
-                    {altseasonData?.altseasonIndex > 75 ? '🚀 Altseason!' : 
-                     altseasonData?.altseasonIndex > 60 ? '📈 Alty rosną' :
-                     altseasonData?.altseasonIndex < 25 ? '₿ BTC Season' :
-                     altseasonData?.altseasonIndex < 40 ? '📉 BTC dominuje' : '⚖️ Neutralny'}
-                  </div>
-                </div>
-                
-                {/* ETH/BTC Ratio */}
-                <div 
-                  onClick={() => setHelpModal('ethBtcRatio')}
-                  style={{
-                  padding: '12px',
-                  background: altseasonData?.ethBtcRatio > 0.05 ? `${t.positive}15` : 
-                             altseasonData?.ethBtcRatio < 0.035 ? `${t.negative}15` : `${t.warning}15`,
-                  borderRadius: '10px',
-                  textAlign: 'center',
-                  border: `1px solid ${altseasonData?.ethBtcRatio > 0.05 ? t.positive : 
-                          altseasonData?.ethBtcRatio < 0.035 ? t.negative : t.warning}30`,
-                  cursor: 'pointer',
-                  position: 'relative'
-                }}>
-                  <div style={{ position: 'absolute', top: '6px', right: '6px', opacity: 0.5, fontSize: '10px' }}>?</div>
-                  <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>
-                    ⚡ ETH/BTC Ratio
-                  </div>
-                  <div style={{ 
-                    fontSize: '24px', 
-                    fontWeight: '700',
-                    color: altseasonData?.ethBtcRatio > 0.05 ? t.positive : 
-                           altseasonData?.ethBtcRatio < 0.035 ? t.negative : t.warning
-                  }}>
-                    {altseasonData?.ethBtcRatio || '---'}
-                  </div>
-                  <div style={{ fontSize: '9px', color: t.textSecondary, marginTop: '2px' }}>
-                    {altseasonData?.ethBtcRatio > 0.055 ? '🟢 ETH bardzo silny' :
-                     altseasonData?.ethBtcRatio > 0.045 ? '📈 ETH outperformuje' :
-                     altseasonData?.ethBtcRatio < 0.03 ? '🔴 BTC dominuje' : '⚖️ Neutralny'}
-                  </div>
-                </div>
-                
-                {/* Total2 */}
-                <div 
-                  onClick={() => setHelpModal('total2')}
-                  style={{
-                  padding: '12px',
-                  background: t.cardBg,
-                  borderRadius: '10px',
-                  textAlign: 'center',
-                  border: `1px solid ${t.border}`,
-                  cursor: 'pointer',
-                  position: 'relative'
-                }}>
-                  <div style={{ position: 'absolute', top: '6px', right: '6px', opacity: 0.5, fontSize: '10px' }}>?</div>
-                  <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>
-                    📊 Total2 (bez BTC)
-                  </div>
-                  <div style={{ fontSize: '22px', fontWeight: '700' }}>
-                    ${altseasonData?.total2 || '---'}T
-                  </div>
-                  <div style={{ fontSize: '9px', color: t.textSecondary, marginTop: '2px' }}>
-                    Market cap altów
-                  </div>
-                </div>
-                
-                {/* BTC Dominance */}
-                <div 
-                  onClick={() => setHelpModal('btcDominance')}
-                  style={{
-                  padding: '12px',
-                  background: altseasonData?.btcDominance < 45 ? `${t.positive}15` : 
-                             altseasonData?.btcDominance > 55 ? `${t.negative}15` : `${t.warning}15`,
-                  borderRadius: '10px',
-                  textAlign: 'center',
-                  border: `1px solid ${altseasonData?.btcDominance < 45 ? t.positive : 
-                          altseasonData?.btcDominance > 55 ? t.negative : t.warning}30`,
-                  cursor: 'pointer',
-                  position: 'relative'
-                }}>
-                  <div style={{ position: 'absolute', top: '6px', right: '6px', opacity: 0.5, fontSize: '10px' }}>?</div>
-                  <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>
-                    👑 BTC Dominance
-                  </div>
-                  <div style={{ 
-                    fontSize: '22px', 
-                    fontWeight: '700',
-                    color: altseasonData?.btcDominance < 45 ? t.positive : 
-                           altseasonData?.btcDominance > 55 ? t.negative : t.warning
-                  }}>
-                    {altseasonData?.btcDominance || '---'}%
-                  </div>
-                  <div style={{ fontSize: '9px', color: t.textSecondary, marginTop: '2px' }}>
-                    {altseasonData?.btcDominance < 45 ? '🎨 Altseason zone' :
-                     altseasonData?.btcDominance > 55 ? '₿ BTC season' : '⚖️ Neutralny'}
-                  </div>
-                </div>
-              </div>
-            </Card>
-
-            {/* ============ STABLECOIN FLOWS ============ */}
-            <Card theme={theme} helpKey="stablecoinFlows" onHelp={setHelpModal}>
-              <div style={{ 
-                display: 'flex', 
-                justifyContent: 'space-between', 
-                alignItems: 'center',
-                marginBottom: '12px'
-              }}>
-                <div style={{ fontSize: '13px', fontWeight: '600' }}>
-                  💵 Stablecoin Flows
-                </div>
-                <ApiStatusBadge status={altseasonData?.stablecoins ? 'live' : 'loading'} label="DefiLlama" theme={theme} />
-              </div>
-              
-              <div style={{ display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(2, 1fr)' }}>
-                {/* USDT */}
-                <div style={{
-                  padding: '12px',
-                  background: `${t.positive}10`,
-                  borderRadius: '10px',
-                  border: `1px solid ${t.positive}25`
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                    <span style={{ fontSize: '16px' }}>🟢</span>
-                    <span style={{ fontSize: '12px', fontWeight: '600' }}>USDT</span>
-                  </div>
-                  <div style={{ fontSize: '20px', fontWeight: '700' }}>
-                    ${altseasonData?.stablecoins?.usdt?.mcap || '---'}B
-                  </div>
-                  <div style={{ 
-                    fontSize: '11px', 
-                    color: (altseasonData?.stablecoins?.usdt?.change7d || 0) >= 0 ? t.positive : t.negative,
-                    marginTop: '4px'
-                  }}>
-                    {altseasonData?.stablecoins?.usdt?.change7d >= 0 ? '+' : ''}
-                    {altseasonData?.stablecoins?.usdt?.change7d?.toFixed(2) || '---'}% (7d)
-                  </div>
-                </div>
-                
-                {/* USDC */}
-                <div style={{
-                  padding: '12px',
-                  background: `${t.accent}10`,
-                  borderRadius: '10px',
-                  border: `1px solid ${t.accent}25`
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                    <span style={{ fontSize: '16px' }}>🔵</span>
-                    <span style={{ fontSize: '12px', fontWeight: '600' }}>USDC</span>
-                  </div>
-                  <div style={{ fontSize: '20px', fontWeight: '700' }}>
-                    ${altseasonData?.stablecoins?.usdc?.mcap || '---'}B
-                  </div>
-                  <div style={{ 
-                    fontSize: '11px', 
-                    color: (altseasonData?.stablecoins?.usdc?.change7d || 0) >= 0 ? t.positive : t.negative,
-                    marginTop: '4px'
-                  }}>
-                    {altseasonData?.stablecoins?.usdc?.change7d >= 0 ? '+' : ''}
-                    {altseasonData?.stablecoins?.usdc?.change7d?.toFixed(2) || '---'}% (7d)
-                  </div>
-                </div>
-              </div>
-              
-              {/* Total Stablecoins Summary */}
-              <div style={{
-                marginTop: '12px',
-                padding: '10px',
-                background: t.cardBg,
-                borderRadius: '8px',
-                border: `1px solid ${t.border}`,
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-              }}>
-                <div>
-                  <div style={{ fontSize: '10px', color: t.textSecondary }}>Total USDT+USDC</div>
-                  <div style={{ fontSize: '16px', fontWeight: '700' }}>
-                    ${altseasonData?.stablecoins?.total || '---'}B
-                  </div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '10px', color: t.textSecondary }}>USDT Dominance</div>
-                  <div style={{ fontSize: '16px', fontWeight: '700' }}>
-                    {altseasonData?.stablecoins?.usdtDominance || '---'}%
-                  </div>
-                </div>
-              </div>
-              
-              {/* Interpretation */}
-              <div style={{
-                marginTop: '10px',
-                padding: '8px 10px',
-                background: (altseasonData?.stablecoins?.usdt?.change7d || 0) > 0 && 
-                           (altseasonData?.stablecoins?.usdc?.change7d || 0) > 0 
-                           ? `${t.positive}12` : `${t.warning}12`,
-                borderRadius: '6px',
-                fontSize: '10px',
-                color: t.textSecondary
-              }}>
-                {(altseasonData?.stablecoins?.usdt?.change7d || 0) > 0 && 
-                 (altseasonData?.stablecoins?.usdc?.change7d || 0) > 0 
-                  ? '🟢 Kapitał napływa do stablecoinów - "suchy proch" gotowy na zakupy'
-                  : (altseasonData?.stablecoins?.usdt?.change7d || 0) < 0 && 
-                    (altseasonData?.stablecoins?.usdc?.change7d || 0) < 0
-                    ? '🔴 Kapitał odpływa ze stablecoinów - mniej paliwa dla wzrostów'
-                    : '🟡 Mieszany sygnał - obserwuj przepływy między USDT/USDC'}
-              </div>
-            </Card>
+              </Card>
+            )}
           </div>
         )}
 
         {/* MACRO TAB */}
         {activeTab === 'macro' && (
-          <div style={{ display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
-            <Card helpKey="m2Supply" onHelp={setHelpModal} theme={theme}
-              signalColor={fredData?.m2Supply?.trend === 'expanding' ? t.positive : t.negative}
-              isLive={!!fredData?.m2Supply}>
+          <div style={{ display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))' }}>
+            <Card helpKey="m2Supply" onHelp={setHelpModal} theme={theme} signalColor={fredData?.m2Supply?.trend === 'expanding' ? t.positive : t.negative} isLive={!!fredData?.m2Supply}>
               <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>🏦 M2 Supply</div>
               <div style={{ fontSize: '18px', fontWeight: '700' }}>${fredData?.m2Supply?.value || '---'}T</div>
-              <span style={{ fontSize: '11px', color: (fredData?.m2Supply?.change || 0) >= 0 ? t.positive : t.negative }}>
-                {fredData?.m2Supply?.change ? `${formatChange(fredData.m2Supply.change)} YoY` : '---'}
-              </span>
-              {fredData?.m2Supply?.trend && (
-                <div style={{ marginTop: '4px', padding: '3px 6px', background: `${t.positive}20`, borderRadius: '4px', fontSize: '9px', color: t.positive, fontWeight: '500' }}>
-                  {fredData.m2Supply.trend === 'expanding' ? '📈 Ekspansja' : '📉 Kontrakcja'}
-                </div>
-              )}
+              <span style={{ fontSize: '11px', color: fredData?.m2Supply?.trend === 'expanding' ? t.positive : t.negative }}>{fredData?.m2Supply?.change ? formatChange(fredData.m2Supply.change) : '---'} (YoY)</span>
             </Card>
-
-            <Card helpKey="dxy" onHelp={setHelpModal} theme={theme}
-              signalColor={mockData.dxy.change < 0 ? t.positive : t.negative}>
+            <Card theme={theme} signalColor={mockData.dxy.change < 0 ? t.positive : t.negative}>
               <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>💲 DXY Index</div>
               <div style={{ fontSize: '18px', fontWeight: '700' }}>{mockData.dxy.value}</div>
-              <span style={{ fontSize: '11px', color: mockData.dxy.change < 0 ? t.positive : t.negative }}>
-                {formatChange(mockData.dxy.change)}
-              </span>
-            </Card>
-
-            <Card theme={theme} style={{ gridColumn: 'span 2' }}>
-              <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px' }}>📊 Korelacja M2 vs BTC</div>
-              <p style={{ fontSize: '11px', color: t.textSecondary, lineHeight: '1.4', margin: 0 }}>
-                Wzrost podaży M2 historycznie koreluje z wzrostami BTC z opóźnieniem ~3-6 miesięcy.
-                Obecny trend: <strong style={{ color: fredData?.m2Supply?.trend === 'expanding' ? t.positive : t.negative }}>
-                  {fredData?.m2Supply?.trend === 'expanding' ? '📈 Ekspansja' : '📉 Kontrakcja'}
-                </strong>
-              </p>
+              <span style={{ fontSize: '11px', color: mockData.dxy.change < 0 ? t.positive : t.negative }}>{formatChange(mockData.dxy.change)}</span>
             </Card>
           </div>
         )}
 
         {/* DEFI TAB */}
         {activeTab === 'defi' && (
-          <div style={{ display: 'grid', gap: '10px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <div style={{ display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))' }}>
-              <Card helpKey="tvl" onHelp={setHelpModal} theme={theme}
-                signalColor={(defiData?.tvl?.change || 0) >= 0 ? t.positive : t.negative}
-                isLive={!!defiData?.tvl}>
+              <Card helpKey="tvl" onHelp={setHelpModal} theme={theme} signalColor={(defiData?.tvl?.change || 0) >= 0 ? t.positive : t.negative} isLive={!!defiData?.tvl}>
                 <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>🔒 Total TVL</div>
                 <div style={{ fontSize: '18px', fontWeight: '700' }}>${defiData?.tvl?.value || '---'}B</div>
-                <span style={{ fontSize: '11px', color: (defiData?.tvl?.change || 0) >= 0 ? t.positive : t.negative }}>
-                  {defiData?.tvl?.change ? formatChange(defiData.tvl.change) : '---'} (7d)
-                </span>
+                <span style={{ fontSize: '11px', color: (defiData?.tvl?.change || 0) >= 0 ? t.positive : t.negative }}>{defiData?.tvl?.change ? formatChange(defiData.tvl.change) : '---'} (7d)</span>
               </Card>
-
-              <Card helpKey="stablecoinSupply" onHelp={setHelpModal} theme={theme}
-                signalColor={(defiData?.stablecoinSupply?.change || 0) >= 0 ? t.positive : t.negative}
-                isLive={!!defiData?.stablecoinSupply}>
+              <Card helpKey="stablecoinSupply" onHelp={setHelpModal} theme={theme} signalColor={(defiData?.stablecoinSupply?.change || 0) >= 0 ? t.positive : t.negative} isLive={!!defiData?.stablecoinSupply}>
                 <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>💵 Stablecoin</div>
                 <div style={{ fontSize: '18px', fontWeight: '700' }}>${defiData?.stablecoinSupply?.value || '---'}B</div>
-                <span style={{ fontSize: '11px', color: (defiData?.stablecoinSupply?.change || 0) >= 0 ? t.positive : t.negative }}>
-                  {defiData?.stablecoinSupply?.change ? formatChange(defiData.stablecoinSupply.change) : '---'} (30d)
-                </span>
+                <span style={{ fontSize: '11px', color: (defiData?.stablecoinSupply?.change || 0) >= 0 ? t.positive : t.negative }}>{defiData?.stablecoinSupply?.change ? formatChange(defiData.stablecoinSupply.change) : '---'} (30d)</span>
               </Card>
             </div>
-
             {defiData?.topProtocols && (
               <Card theme={theme}>
                 <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px' }}>🏆 Top 5 Protokołów</div>
@@ -1820,9 +769,7 @@ function App() {
                       <span style={{ fontWeight: '500', fontSize: '11px' }}>{i + 1}. {p.name}</span>
                       <div style={{ textAlign: 'right' }}>
                         <span style={{ fontWeight: '600', fontSize: '11px' }}>${(p.tvl / 1e9).toFixed(2)}B</span>
-                        <span style={{ fontSize: '9px', marginLeft: '4px', color: p.change >= 0 ? t.positive : t.negative }}>
-                          {p.change >= 0 ? '+' : ''}{p.change?.toFixed(1)}%
-                        </span>
+                        <span style={{ fontSize: '9px', marginLeft: '4px', color: p.change >= 0 ? t.positive : t.negative }}>{p.change >= 0 ? '+' : ''}{p.change?.toFixed(1)}%</span>
                       </div>
                     </div>
                   ))}
@@ -1835,42 +782,24 @@ function App() {
         {/* DERIVATIVES TAB */}
         {activeTab === 'derivatives' && (
           <div style={{ display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))' }}>
-            <Card helpKey="fundingRate" onHelp={setHelpModal} theme={theme}
-              signalColor={(binanceData?.fundingRate?.value || 0) < 0 ? t.positive : (binanceData?.fundingRate?.value || 0) > 0.05 ? t.negative : t.warning}
-              isLive={!!binanceData?.fundingRate}>
+            <Card helpKey="fundingRate" onHelp={setHelpModal} theme={theme} signalColor={(binanceData?.fundingRate?.value || 0) < 0 ? t.positive : (binanceData?.fundingRate?.value || 0) > 0.05 ? t.negative : t.warning} isLive={!!binanceData?.fundingRate}>
               <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>💸 Funding Rate</div>
-              <div style={{ fontSize: '18px', fontWeight: '700', color: (binanceData?.fundingRate?.value || 0) > 0.03 ? t.warning : t.text }}>
-                {binanceData?.fundingRate?.value?.toFixed(4) || '---'}%
-              </div>
+              <div style={{ fontSize: '18px', fontWeight: '700' }}>{binanceData?.fundingRate?.value?.toFixed(4) || '---'}%</div>
               <span style={{ fontSize: '9px', color: t.textSecondary }}>BTC Perpetual</span>
             </Card>
-
-            <Card helpKey="openInterest" onHelp={setHelpModal} theme={theme}
-              isLive={!!binanceData?.openInterest}>
+            <Card helpKey="openInterest" onHelp={setHelpModal} theme={theme} isLive={!!binanceData?.openInterest}>
               <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>📊 Open Interest</div>
               <div style={{ fontSize: '18px', fontWeight: '700' }}>${binanceData?.openInterest?.value || '---'}B</div>
               <span style={{ fontSize: '9px', color: t.textSecondary }}>BTC Futures</span>
             </Card>
-
-            <Card helpKey="longShortRatio" onHelp={setHelpModal} theme={theme}
-              signalColor={(binanceData?.longShortRatio?.value || 1) < 1 ? t.positive : (binanceData?.longShortRatio?.value || 1) > 1.8 ? t.negative : t.warning}
-              isLive={!!binanceData?.longShortRatio}>
+            <Card helpKey="longShortRatio" onHelp={setHelpModal} theme={theme} signalColor={(binanceData?.longShortRatio?.value || 1) < 1 ? t.positive : (binanceData?.longShortRatio?.value || 1) > 1.8 ? t.negative : t.warning} isLive={!!binanceData?.longShortRatio}>
               <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>⚖️ Long/Short</div>
               <div style={{ fontSize: '18px', fontWeight: '700' }}>{binanceData?.longShortRatio?.value || '---'}</div>
-              <span style={{ fontSize: '9px', color: (binanceData?.longShortRatio?.value || 1) > 1.5 ? t.warning : t.textSecondary }}>
-                {(binanceData?.longShortRatio?.value || 1) > 1.5 ? 'Więcej longów ⚠️' : 'Zrównoważony'}
-              </span>
             </Card>
-
-            <Card theme={theme}
-              signalColor={mockData.liquidations.long > mockData.liquidations.short ? t.negative : t.positive}>
+            <Card theme={theme} signalColor={mockData.liquidations.long > mockData.liquidations.short ? t.negative : t.positive}>
               <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>💥 Liquidations 24h</div>
               <div style={{ fontSize: '18px', fontWeight: '700' }}>${mockData.liquidations.total}M</div>
-              <div style={{ fontSize: '9px', marginTop: '2px' }}>
-                <span style={{ color: t.positive }}>L: ${mockData.liquidations.long}M</span>
-                {' | '}
-                <span style={{ color: t.negative }}>S: ${mockData.liquidations.short}M</span>
-              </div>
+              <div style={{ fontSize: '9px' }}><span style={{ color: t.positive }}>L: ${mockData.liquidations.long}M</span> | <span style={{ color: t.negative }}>S: ${mockData.liquidations.short}M</span></div>
             </Card>
           </div>
         )}
@@ -1882,62 +811,201 @@ function App() {
               <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px' }}>🎯 Wybierz parę</div>
               <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
                 {['BINANCE:BTCUSDT', 'BINANCE:ETHUSDT', 'BINANCE:SOLUSDT', 'CRYPTOCAP:TOTAL', 'CRYPTOCAP:BTC.D'].map(s => (
-                  <button key={s} onClick={() => setTvSymbol(s)} style={{
-                    padding: '5px 10px', borderRadius: '6px', border: 'none',
-                    background: tvSymbol === s ? t.accent : t.bg,
-                    color: tvSymbol === s ? '#fff' : t.textSecondary,
-                    fontSize: '10px', fontWeight: '500', cursor: 'pointer'
-                  }}>{s.split(':')[1]}</button>
+                  <button key={s} onClick={() => setTvSymbol(s)} style={{ padding: '5px 10px', borderRadius: '6px', border: 'none', background: tvSymbol === s ? t.accent : t.bg, color: tvSymbol === s ? '#fff' : t.textSecondary, fontSize: '10px', fontWeight: '500', cursor: 'pointer' }}>{s.split(':')[1]}</button>
                 ))}
               </div>
             </Card>
-
             <Card theme={theme}>
               <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px' }}>👁️ Widok</div>
               <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                {[
-                  { id: 'analysis', label: '📊 Analiza' },
-                  { id: 'chart', label: '📈 Wykres' },
-                  { id: 'both', label: '🔀 Oba' }
-                ].map(v => (
-                  <button key={v.id} onClick={() => setChartView(v.id)} style={{
-                    padding: '5px 10px', borderRadius: '6px', border: 'none',
-                    background: chartView === v.id ? t.accent : t.bg,
-                    color: chartView === v.id ? '#fff' : t.textSecondary,
-                    fontSize: '10px', fontWeight: '500', cursor: 'pointer'
-                  }}>{v.label}</button>
+                {[{ id: 'analysis', label: '📊 Analiza' }, { id: 'chart', label: '📈 Wykres' }, { id: 'both', label: '🔀 Oba' }].map(v => (
+                  <button key={v.id} onClick={() => setChartView(v.id)} style={{ padding: '5px 10px', borderRadius: '6px', border: 'none', background: chartView === v.id ? t.accent : t.bg, color: chartView === v.id ? '#fff' : t.textSecondary, fontSize: '10px', fontWeight: '500', cursor: 'pointer' }}>{v.label}</button>
                 ))}
               </div>
             </Card>
-
             {(chartView === 'analysis' || chartView === 'both') && (
-              <Card helpKey="technicalAnalysis" onHelp={setHelpModal} theme={theme}>
-                <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '4px', display: 'flex', alignItems: 'center' }}>
-                  📊 Analiza Techniczna - {tvSymbol.split(':')[1]}
-                  <LiveTag theme={theme} />
-                </div>
-                <div style={{ fontSize: '9px', color: t.textSecondary, marginBottom: '8px' }}>
-                  Oscylatory • Moving Averages • Buy/Sell
-                </div>
+              <Card theme={theme}>
+                <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '4px' }}>📊 Analiza Techniczna - {tvSymbol.split(':')[1]} <LiveTag theme={theme} /></div>
                 <TradingViewTechnicalAnalysis symbol={tvSymbol} theme={theme} interval={taInterval} />
               </Card>
             )}
-
             {(chartView === 'chart' || chartView === 'both') && (
               <Card theme={theme}>
-                <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px' }}>
-                  📈 Wykres - {tvSymbol.split(':')[1]}
-                </div>
+                <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px' }}>📈 Wykres - {tvSymbol.split(':')[1]}</div>
                 <TradingViewChart symbol={tvSymbol} theme={theme} />
               </Card>
             )}
           </div>
         )}
 
-        {/* Footer */}
-        <div style={{ textAlign: 'center', padding: '14px', color: t.textSecondary, fontSize: '9px' }}>
-          💡 Kliknij <strong>?</strong> aby zobaczyć opis wskaźnika | Auto-refresh: 60s
-        </div>
+        {/* PORTFOLIO TAB */}
+        {activeTab === 'portfolio' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            
+            {/* API Settings */}
+            <Card helpKey="portfolio" onHelp={setHelpModal} theme={theme}>
+              <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>🔐 Binance API</span>
+                {portfolioConnected && <ApiStatusBadge status="live" label="Połączony" theme={theme} />}
+              </div>
+              
+              {!portfolioConnected ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <input type={showApiKeys ? 'text' : 'password'} placeholder="API Key" value={portfolioApiKey} onChange={e => setPortfolioApiKey(e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: `1px solid ${t.border}`, background: t.bg, color: t.text, fontSize: '12px' }} />
+                  <input type={showApiKeys ? 'text' : 'password'} placeholder="Secret Key" value={portfolioSecretKey} onChange={e => setPortfolioSecretKey(e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: `1px solid ${t.border}`, background: t.bg, color: t.text, fontSize: '12px' }} />
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button onClick={() => setShowApiKeys(!showApiKeys)} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: `1px solid ${t.border}`, background: t.bg, color: t.textSecondary, fontSize: '11px', cursor: 'pointer' }}>{showApiKeys ? '🙈 Ukryj' : '👁️ Pokaż'}</button>
+                    <button onClick={connectPortfolio} disabled={portfolioLoading} style={{ flex: 2, padding: '8px', borderRadius: '8px', border: 'none', background: t.accent, color: '#fff', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}>{portfolioLoading ? '⏳ Łączenie...' : '🔗 Połącz'}</button>
+                  </div>
+                  {portfolioError && <div style={{ padding: '8px', background: `${t.negative}20`, borderRadius: '6px', color: t.negative, fontSize: '11px' }}>❌ {portfolioError}</div>}
+                  <div style={{ fontSize: '9px', color: t.textSecondary, padding: '8px', background: t.bg, borderRadius: '6px' }}>
+                    ⚠️ Klucze są przechowywane lokalnie w Twojej przeglądarce (LocalStorage). Nigdy nie włączaj uprawnień "Withdrawals"!
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={refreshPortfolio} disabled={portfolioLoading} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: `1px solid ${t.border}`, background: t.bg, color: t.text, fontSize: '11px', cursor: 'pointer' }}>{portfolioLoading ? '⏳' : '🔄 Odśwież'}</button>
+                  <button onClick={disconnectPortfolio} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: `1px solid ${t.negative}`, background: 'transparent', color: t.negative, fontSize: '11px', cursor: 'pointer' }}>🔓 Rozłącz</button>
+                </div>
+              )}
+            </Card>
+
+            {portfolioConnected && (
+              <>
+                {/* Spot Balance */}
+                {spotBalance?.balances && (
+                  <Card theme={theme}>
+                    <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '10px' }}>💰 Spot Balance</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {spotBalance.balances.slice(0, 10).map((b, i) => (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px', background: t.bg, borderRadius: '6px' }}>
+                          <span style={{ fontWeight: '600', fontSize: '12px' }}>{b.asset}</span>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: '12px', fontWeight: '600' }}>{b.total.toFixed(b.total < 1 ? 6 : 2)}</div>
+                            {b.locked > 0 && <div style={{ fontSize: '9px', color: t.warning }}>🔒 {b.locked.toFixed(4)}</div>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                )}
+
+                {/* Futures Balance */}
+                {futuresBalance?.balances && futuresBalance.balances.length > 0 && (
+                  <Card theme={theme}>
+                    <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '10px' }}>📊 Futures Balance</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {futuresBalance.balances.map((b, i) => (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px', background: t.bg, borderRadius: '6px' }}>
+                          <span style={{ fontWeight: '600', fontSize: '12px' }}>{b.asset}</span>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: '12px', fontWeight: '600' }}>{b.balance.toFixed(2)}</div>
+                            {b.crossUnPnl !== 0 && <div style={{ fontSize: '9px', color: b.crossUnPnl >= 0 ? t.positive : t.negative }}>PnL: {b.crossUnPnl >= 0 ? '+' : ''}{b.crossUnPnl.toFixed(2)}</div>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                )}
+
+                {/* Open Positions */}
+                {futuresPositions?.positions && futuresPositions.positions.length > 0 && (
+                  <Card theme={theme}>
+                    <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '10px' }}>📈 Open Positions</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {futuresPositions.positions.map((p, i) => (
+                        <div key={i} style={{ padding: '10px', background: t.bg, borderRadius: '8px', borderLeft: `4px solid ${p.side === 'LONG' ? t.positive : t.negative}` }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                            <span style={{ fontWeight: '700', fontSize: '13px' }}>{p.symbol}</span>
+                            <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: p.side === 'LONG' ? `${t.positive}20` : `${t.negative}20`, color: p.side === 'LONG' ? t.positive : t.negative, fontWeight: '600' }}>{p.side} {p.leverage}x</span>
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', fontSize: '10px' }}>
+                            <div><span style={{ color: t.textSecondary }}>Size:</span> {p.positionAmt}</div>
+                            <div><span style={{ color: t.textSecondary }}>Entry:</span> ${p.entryPrice.toFixed(2)}</div>
+                            <div><span style={{ color: t.textSecondary }}>Mark:</span> ${p.markPrice.toFixed(2)}</div>
+                            <div><span style={{ color: t.textSecondary }}>Liq:</span> ${p.liquidationPrice.toFixed(2)}</div>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
+                            <div style={{ fontSize: '14px', fontWeight: '700', color: p.unRealizedProfit >= 0 ? t.positive : t.negative }}>
+                              {p.unRealizedProfit >= 0 ? '+' : ''}{p.unRealizedProfit.toFixed(2)} USDT ({p.pnlPercent}%)
+                            </div>
+                            <button onClick={() => handleClosePosition(p.symbol, p.positionAmt)} style={{ padding: '4px 8px', borderRadius: '4px', border: 'none', background: t.negative, color: '#fff', fontSize: '9px', fontWeight: '600', cursor: 'pointer' }}>Close</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                )}
+
+                {/* Open Orders */}
+                {openOrders && (openOrders.spot?.length > 0 || openOrders.futures?.length > 0) && (
+                  <Card theme={theme}>
+                    <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '10px' }}>📋 Open Orders</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {[...(openOrders.spot || []), ...(openOrders.futures || [])].map((o, i) => (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px', background: t.bg, borderRadius: '6px' }}>
+                          <div>
+                            <div style={{ fontWeight: '600', fontSize: '11px' }}>{o.symbol}</div>
+                            <div style={{ fontSize: '9px', color: t.textSecondary }}>{o.side} {o.type} @ {o.price}</div>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '10px', color: o.market === 'SPOT' ? t.accent : t.warning }}>{o.market}</span>
+                            <button onClick={() => handleCancelOrder(o.symbol, o.orderId, o.market)} style={{ padding: '3px 6px', borderRadius: '4px', border: 'none', background: t.negative, color: '#fff', fontSize: '9px', cursor: 'pointer' }}>✕</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                )}
+
+                {/* Quick Trade */}
+                <Card theme={theme}>
+                  <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '10px' }}>⚡ Quick Trade</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <select value={tradeSymbol} onChange={e => setTradeSymbol(e.target.value)} style={{ flex: 2, padding: '8px', borderRadius: '6px', border: `1px solid ${t.border}`, background: t.bg, color: t.text, fontSize: '11px' }}>
+                        <option value="BTCUSDT">BTC/USDT</option>
+                        <option value="ETHUSDT">ETH/USDT</option>
+                        <option value="SOLUSDT">SOL/USDT</option>
+                        <option value="BNBUSDT">BNB/USDT</option>
+                      </select>
+                      <select value={tradeMarket} onChange={e => setTradeMarket(e.target.value)} style={{ flex: 1, padding: '8px', borderRadius: '6px', border: `1px solid ${t.border}`, background: t.bg, color: t.text, fontSize: '11px' }}>
+                        <option value="SPOT">Spot</option>
+                        <option value="FUTURES">Futures</option>
+                      </select>
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button onClick={() => setTradeSide('BUY')} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: 'none', background: tradeSide === 'BUY' ? t.positive : t.bg, color: tradeSide === 'BUY' ? '#fff' : t.textSecondary, fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>🟢 BUY</button>
+                      <button onClick={() => setTradeSide('SELL')} style={{ flex: 1, padding: '10px', borderRadius: '6px', border: 'none', background: tradeSide === 'SELL' ? t.negative : t.bg, color: tradeSide === 'SELL' ? '#fff' : t.textSecondary, fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>🔴 SELL</button>
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button onClick={() => setTradeType('MARKET')} style={{ flex: 1, padding: '8px', borderRadius: '6px', border: tradeType === 'MARKET' ? `2px solid ${t.accent}` : `1px solid ${t.border}`, background: t.bg, color: tradeType === 'MARKET' ? t.accent : t.textSecondary, fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}>Market</button>
+                      <button onClick={() => setTradeType('LIMIT')} style={{ flex: 1, padding: '8px', borderRadius: '6px', border: tradeType === 'LIMIT' ? `2px solid ${t.accent}` : `1px solid ${t.border}`, background: t.bg, color: tradeType === 'LIMIT' ? t.accent : t.textSecondary, fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}>Limit</button>
+                    </div>
+                    <input type="number" placeholder="Ilość" value={tradeQuantity} onChange={e => setTradeQuantity(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: `1px solid ${t.border}`, background: t.bg, color: t.text, fontSize: '12px' }} />
+                    {tradeType === 'LIMIT' && (
+                      <input type="number" placeholder="Cena" value={tradePrice} onChange={e => setTradePrice(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: `1px solid ${t.border}`, background: t.bg, color: t.text, fontSize: '12px' }} />
+                    )}
+                    <button onClick={executeTrade} style={{ padding: '12px', borderRadius: '8px', border: 'none', background: tradeSide === 'BUY' ? t.positive : t.negative, color: '#fff', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
+                      {tradeSide === 'BUY' ? '🟢' : '🔴'} {tradeSide} {tradeType} {tradeSymbol}
+                    </button>
+                    {tradeResult && (
+                      <div style={{ padding: '8px', borderRadius: '6px', background: tradeResult.success ? `${t.positive}20` : `${t.negative}20`, color: tradeResult.success ? t.positive : t.negative, fontSize: '11px' }}>
+                        {tradeResult.success ? `✅ Order złożony! ID: ${tradeResult.order.orderId}` : `❌ ${tradeResult.error}`}
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              </>
+            )}
+          </div>
+        )}
+
+      </div>
+
+      {/* Footer */}
+      <div style={{ textAlign: 'center', padding: '14px', color: t.textSecondary, fontSize: '9px', position: 'fixed', bottom: 0, left: 0, right: 0, background: t.bg, borderTop: `1px solid ${t.border}` }}>
+        💡 v3.0 Portfolio & Trading | Auto-refresh: 60s
       </div>
 
       {/* Help Modal */}
