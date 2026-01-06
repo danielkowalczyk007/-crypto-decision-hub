@@ -3,7 +3,6 @@ import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, AreaChart, Area, To
 
 // ============== API FUNCTIONS ==============
 
-// CoinGecko - ceny, dominacja, volume
 const fetchCoinGeckoData = async () => {
   try {
     const [pricesRes, globalRes, fearGreedRes] = await Promise.all([
@@ -11,42 +10,20 @@ const fetchCoinGeckoData = async () => {
       fetch('https://api.coingecko.com/api/v3/global'),
       fetch('https://api.alternative.me/fng/?limit=1')
     ]);
-    
     const prices = await pricesRes.json();
     const global = await globalRes.json();
     const fearGreed = await fearGreedRes.json();
-    
     return {
-      btcPrice: {
-        value: Math.round(prices.bitcoin.usd),
-        change: parseFloat(prices.bitcoin.usd_24h_change?.toFixed(2)) || 0,
-        marketCap: prices.bitcoin.usd_market_cap
-      },
-      ethPrice: {
-        value: Math.round(prices.ethereum.usd),
-        change: parseFloat(prices.ethereum.usd_24h_change?.toFixed(2)) || 0
-      },
-      btcDominance: {
-        value: parseFloat(global.data.market_cap_percentage.btc.toFixed(1)),
-        change: 0
-      },
+      btcPrice: { value: Math.round(prices.bitcoin.usd), change: parseFloat(prices.bitcoin.usd_24h_change?.toFixed(2)) || 0, marketCap: prices.bitcoin.usd_market_cap },
+      ethPrice: { value: Math.round(prices.ethereum.usd), change: parseFloat(prices.ethereum.usd_24h_change?.toFixed(2)) || 0 },
+      btcDominance: { value: parseFloat(global.data.market_cap_percentage.btc.toFixed(1)), change: 0 },
       totalMarketCap: global.data.total_market_cap.usd,
-      volume24h: {
-        total: parseFloat((global.data.total_volume.usd / 1e9).toFixed(1)),
-        change: 0
-      },
-      fearGreed: {
-        value: parseInt(fearGreed.data[0].value),
-        label: fearGreed.data[0].value_classification
-      }
+      volume24h: { total: parseFloat((global.data.total_volume.usd / 1e9).toFixed(1)), change: 0 },
+      fearGreed: { value: parseInt(fearGreed.data[0].value), label: fearGreed.data[0].value_classification }
     };
-  } catch (error) {
-    console.error('CoinGecko API Error:', error);
-    return null;
-  }
+  } catch (error) { console.error('CoinGecko API Error:', error); return null; }
 };
 
-// Binance Futures - Funding Rate, Open Interest, Long/Short
 const fetchBinanceData = async () => {
   try {
     const [fundingRes, oiRes, longShortRes, fundingHistoryRes] = await Promise.all([
@@ -55,52 +32,25 @@ const fetchBinanceData = async () => {
       fetch('https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=1h&limit=24'),
       fetch('https://fapi.binance.com/fapi/v1/fundingRate?symbol=BTCUSDT&limit=24')
     ]);
-
     const funding = await fundingRes.json();
     const oi = await oiRes.json();
     const longShort = await longShortRes.json();
     const fundingHistory = await fundingHistoryRes.json();
-
     const fundingRate = parseFloat(funding.lastFundingRate) * 100;
     const openInterestBTC = parseFloat(oi.openInterest);
     const latestLS = longShort[longShort.length - 1];
     const longRatio = parseFloat(latestLS.longAccount) * 100;
-
-    const fundingChartData = fundingHistory.map(f => ({
-      time: new Date(f.fundingTime).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }),
-      value: parseFloat(f.fundingRate) * 100
-    })).reverse();
-
-    const longShortChartData = longShort.map(ls => ({
-      time: new Date(ls.timestamp).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }),
-      long: parseFloat(ls.longAccount) * 100,
-      short: parseFloat(ls.shortAccount) * 100
-    }));
-
+    const fundingChartData = fundingHistory.map(f => ({ time: new Date(f.fundingTime).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }), value: parseFloat(f.fundingRate) * 100 })).reverse();
+    const longShortChartData = longShort.map(ls => ({ time: new Date(ls.timestamp).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }), long: parseFloat(ls.longAccount) * 100, short: parseFloat(ls.shortAccount) * 100 }));
     return {
-      fundingRate: {
-        value: fundingRate.toFixed(4),
-        signal: fundingRate > 0.05 ? 'overbought' : fundingRate < -0.05 ? 'oversold' : 'neutral'
-      },
-      openInterest: {
-        value: openInterestBTC,
-        formatted: (openInterestBTC / 1000).toFixed(1) + 'K BTC'
-      },
-      longShortRatio: {
-        long: longRatio.toFixed(1),
-        short: (100 - longRatio).toFixed(1),
-        signal: longRatio > 55 ? 'bullish' : longRatio < 45 ? 'bearish' : 'neutral'
-      },
-      fundingChartData,
-      longShortChartData
+      fundingRate: { value: fundingRate.toFixed(4), signal: fundingRate > 0.05 ? 'overbought' : fundingRate < -0.05 ? 'oversold' : 'neutral' },
+      openInterest: { value: openInterestBTC, formatted: (openInterestBTC / 1000).toFixed(1) + 'K BTC' },
+      longShortRatio: { long: longRatio.toFixed(1), short: (100 - longRatio).toFixed(1), signal: longRatio > 55 ? 'bullish' : longRatio < 45 ? 'bearish' : 'neutral' },
+      fundingChartData, longShortChartData
     };
-  } catch (error) {
-    console.error('Binance API Error:', error);
-    return null;
-  }
+  } catch (error) { console.error('Binance API Error:', error); return null; }
 };
 
-// DefiLlama - TVL, Stablecoins, Top Protocols
 const fetchDefiLlamaData = async () => {
   try {
     const [tvlRes, stablecoinsRes, protocolsRes] = await Promise.all([
@@ -108,77 +58,33 @@ const fetchDefiLlamaData = async () => {
       fetch('https://stablecoins.llama.fi/stablecoins?includePrices=false'),
       fetch('https://api.llama.fi/protocols')
     ]);
-
     const tvlData = await tvlRes.json();
     const stablecoinsData = await stablecoinsRes.json();
     const protocolsData = await protocolsRes.json();
-
     const last30Days = tvlData.slice(-30);
     const latestTvl = last30Days[last30Days.length - 1]?.tvl || 0;
     const tvl30DaysAgo = last30Days[0]?.tvl || latestTvl;
     const tvlChange = ((latestTvl - tvl30DaysAgo) / tvl30DaysAgo * 100).toFixed(1);
-
     let totalStablecoins = 0;
-    if (stablecoinsData.peggedAssets) {
-      stablecoinsData.peggedAssets.forEach(stable => {
-        if (stable.circulating?.peggedUSD) {
-          totalStablecoins += stable.circulating.peggedUSD;
-        }
-      });
-    }
-
-    const topProtocols = protocolsData
-      .sort((a, b) => (b.tvl || 0) - (a.tvl || 0))
-      .slice(0, 5)
-      .map(p => ({ name: p.name, tvl: p.tvl, change_1d: p.change_1d }));
-
-    const tvlChartData = last30Days.map(d => ({
-      date: new Date(d.date * 1000).toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit' }),
-      tvl: parseFloat((d.tvl / 1e9).toFixed(1))
-    }));
-
-    return {
-      tvl: {
-        value: parseFloat((latestTvl / 1e9).toFixed(1)),
-        change: parseFloat(tvlChange)
-      },
-      stablecoinSupply: {
-        value: parseFloat((totalStablecoins / 1e9).toFixed(1)),
-        change: 0
-      },
-      topProtocols,
-      tvlChartData
-    };
-  } catch (error) {
-    console.error('DefiLlama API Error:', error);
-    return null;
-  }
+    if (stablecoinsData.peggedAssets) { stablecoinsData.peggedAssets.forEach(stable => { if (stable.circulating?.peggedUSD) { totalStablecoins += stable.circulating.peggedUSD; } }); }
+    const topProtocols = protocolsData.sort((a, b) => (b.tvl || 0) - (a.tvl || 0)).slice(0, 5).map(p => ({ name: p.name, tvl: p.tvl, change_1d: p.change_1d }));
+    const tvlChartData = last30Days.map(d => ({ date: new Date(d.date * 1000).toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit' }), tvl: parseFloat((d.tvl / 1e9).toFixed(1)) }));
+    return { tvl: { value: parseFloat((latestTvl / 1e9).toFixed(1)), change: parseFloat(tvlChange) }, stablecoinSupply: { value: parseFloat((totalStablecoins / 1e9).toFixed(1)), change: 0 }, topProtocols, tvlChartData };
+  } catch (error) { console.error('DefiLlama API Error:', error); return null; }
 };
 
-// FRED - M2 Money Supply
 const fetchFREDData = async () => {
   try {
     const m2Data = { value: 21.5, previousValue: 21.0, date: '2024-12' };
     const change = ((m2Data.value - m2Data.previousValue) / m2Data.previousValue * 100).toFixed(1);
-    return {
-      m2Supply: {
-        value: m2Data.value,
-        change: parseFloat(change),
-        trend: parseFloat(change) > 0 ? 'expanding' : 'contracting',
-        unit: 'T USD',
-        lastUpdate: m2Data.date
-      }
-    };
-  } catch (error) {
-    console.error('FRED API Error:', error);
-    return null;
-  }
+    return { m2Supply: { value: m2Data.value, change: parseFloat(change), trend: parseFloat(change) > 0 ? 'expanding' : 'contracting', unit: 'T USD', lastUpdate: m2Data.date } };
+  } catch (error) { console.error('FRED API Error:', error); return null; }
 };
 
-// ============== TRADINGVIEW WIDGET ==============
-const TradingViewWidget = ({ symbol = 'BINANCE:BTCUSDT', theme = 'dark' }) => {
-  const containerRef = useRef(null);
+// ============== TRADINGVIEW WIDGETS ==============
 
+const TradingViewChart = ({ symbol = 'BINANCE:BTCUSDT', theme = 'dark' }) => {
+  const containerRef = useRef(null);
   useEffect(() => {
     if (containerRef.current) {
       containerRef.current.innerHTML = '';
@@ -196,8 +102,33 @@ const TradingViewWidget = ({ symbol = 'BINANCE:BTCUSDT', theme = 'dark' }) => {
       containerRef.current.appendChild(script);
     }
   }, [symbol, theme]);
+  return <div ref={containerRef} style={{ height: '400px', width: '100%', borderRadius: '12px', overflow: 'hidden' }} />;
+};
 
-  return <div ref={containerRef} style={{ height: '500px', width: '100%', borderRadius: '12px', overflow: 'hidden' }} />;
+const TradingViewTechnicalAnalysis = ({ symbol = 'BINANCE:BTCUSDT', theme = 'dark' }) => {
+  const containerRef = useRef(null);
+  useEffect(() => {
+    if (containerRef.current) {
+      containerRef.current.innerHTML = '';
+      const script = document.createElement('script');
+      script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-technical-analysis.js';
+      script.type = 'text/javascript';
+      script.async = true;
+      script.innerHTML = JSON.stringify({
+        interval: '1D',
+        width: '100%',
+        isTransparent: true,
+        height: '450',
+        symbol: symbol,
+        showIntervalTabs: true,
+        displayMode: 'single',
+        locale: 'pl',
+        colorTheme: theme
+      });
+      containerRef.current.appendChild(script);
+    }
+  }, [symbol, theme]);
+  return <div ref={containerRef} style={{ height: '450px', width: '100%' }} />;
 };
 
 // ============== THEMES ==============
@@ -214,6 +145,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [apiStatus, setApiStatus] = useState({ coingecko: false, binance: false, defillama: false, fred: false });
   const [tvSymbol, setTvSymbol] = useState('BINANCE:BTCUSDT');
+  const [chartView, setChartView] = useState('both'); // 'chart', 'analysis', 'both'
   
   const [marketData, setMarketData] = useState(null);
   const [binanceData, setBinanceData] = useState(null);
@@ -299,7 +231,9 @@ function App() {
     modeToggle: { display: 'flex', background: t.cardBg, borderRadius: '25px', padding: '4px', gap: '4px' },
     modeBtn: (active) => ({ padding: '6px 12px', borderRadius: '20px', border: 'none', background: active ? t.accent : 'transparent', color: active ? '#fff' : t.textSecondary, cursor: 'pointer', fontSize: '0.8rem', fontWeight: '500', transition: 'all 0.2s' }),
     liveTag: { background: t.positive, color: '#000', padding: '2px 6px', borderRadius: '4px', fontSize: '0.6rem', fontWeight: '700', marginLeft: '5px' },
-    protocolItem: { display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${t.cardBorder}` }
+    protocolItem: { display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${t.cardBorder}` },
+    viewToggle: { display: 'flex', gap: '5px', marginBottom: '10px', flexWrap: 'wrap' },
+    viewBtn: (active) => ({ padding: '6px 12px', borderRadius: '8px', border: `1px solid ${t.cardBorder}`, background: active ? t.accent : t.cardBg, color: active ? '#fff' : t.textSecondary, cursor: 'pointer', fontSize: '0.75rem', fontWeight: '500' })
   };
 
   if (loading && !marketData) {
@@ -452,16 +386,48 @@ function App() {
       )}
 
       {activeTab === 'charts' && (
-        <div style={styles.card}>
-          <div style={styles.cardTitle}>📈 TradingView Chart</div>
-          <TradingViewWidget symbol={tvSymbol} theme={theme} />
-          <div style={{ marginTop: '10px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <button onClick={() => setTvSymbol('BINANCE:BTCUSDT')} style={{ ...styles.tab(tvSymbol === 'BINANCE:BTCUSDT'), fontSize: '0.75rem' }}>BTC/USDT</button>
-            <button onClick={() => setTvSymbol('BINANCE:ETHUSDT')} style={{ ...styles.tab(tvSymbol === 'BINANCE:ETHUSDT'), fontSize: '0.75rem' }}>ETH/USDT</button>
-            <button onClick={() => setTvSymbol('BINANCE:SOLUSDT')} style={{ ...styles.tab(tvSymbol === 'BINANCE:SOLUSDT'), fontSize: '0.75rem' }}>SOL/USDT</button>
-            <button onClick={() => setTvSymbol('CRYPTOCAP:TOTAL')} style={{ ...styles.tab(tvSymbol === 'CRYPTOCAP:TOTAL'), fontSize: '0.75rem' }}>Total MCap</button>
+        <>
+          {/* Symbol Selector */}
+          <div style={{ ...styles.card, paddingBottom: '10px' }}>
+            <div style={styles.cardTitle}>Wybierz parę</div>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button onClick={() => setTvSymbol('BINANCE:BTCUSDT')} style={{ ...styles.viewBtn(tvSymbol === 'BINANCE:BTCUSDT') }}>BTC/USDT</button>
+              <button onClick={() => setTvSymbol('BINANCE:ETHUSDT')} style={{ ...styles.viewBtn(tvSymbol === 'BINANCE:ETHUSDT') }}>ETH/USDT</button>
+              <button onClick={() => setTvSymbol('BINANCE:SOLUSDT')} style={{ ...styles.viewBtn(tvSymbol === 'BINANCE:SOLUSDT') }}>SOL/USDT</button>
+              <button onClick={() => setTvSymbol('CRYPTOCAP:TOTAL')} style={{ ...styles.viewBtn(tvSymbol === 'CRYPTOCAP:TOTAL') }}>Total MCap</button>
+              <button onClick={() => setTvSymbol('CRYPTOCAP:BTC.D')} style={{ ...styles.viewBtn(tvSymbol === 'CRYPTOCAP:BTC.D') }}>BTC.D</button>
+            </div>
           </div>
-        </div>
+
+          {/* View Toggle */}
+          <div style={{ ...styles.card, paddingBottom: '10px' }}>
+            <div style={styles.cardTitle}>Widok</div>
+            <div style={styles.viewToggle}>
+              <button onClick={() => setChartView('analysis')} style={styles.viewBtn(chartView === 'analysis')}>📊 Analiza Techniczna</button>
+              <button onClick={() => setChartView('chart')} style={styles.viewBtn(chartView === 'chart')}>📈 Wykres</button>
+              <button onClick={() => setChartView('both')} style={styles.viewBtn(chartView === 'both')}>🔀 Oba</button>
+            </div>
+          </div>
+
+          {/* Technical Analysis Widget */}
+          {(chartView === 'analysis' || chartView === 'both') && (
+            <div style={styles.card}>
+              <div style={styles.cardTitle}>📊 Analiza Techniczna - {tvSymbol.split(':')[1]} <span style={styles.liveTag}>LIVE</span></div>
+              <div style={{ fontSize: '0.75rem', color: t.textSecondary, marginBottom: '10px' }}>
+                Oscylatory • Moving Averages • Podsumowanie Buy/Sell
+              </div>
+              <TradingViewTechnicalAnalysis symbol={tvSymbol} theme={theme} />
+            </div>
+          )}
+
+          {/* Chart Widget */}
+          {(chartView === 'chart' || chartView === 'both') && (
+            <div style={styles.card}>
+              <div style={styles.cardTitle}>📈 Wykres - {tvSymbol.split(':')[1]}</div>
+              <TradingViewChart symbol={tvSymbol} theme={theme} />
+            </div>
+          )}
+        </>
       )}
 
       <div style={{ textAlign: 'center', padding: '20px', color: t.textSecondary, fontSize: '0.75rem' }}>
