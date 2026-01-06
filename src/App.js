@@ -40,8 +40,103 @@ const fetchCoinGeckoData = async () => {
       }
     };
   } catch (error) {
-    console.error('API Error:', error);
+    console.error('CoinGecko API Error:', error);
     return null;
+  }
+};
+
+const fetchBinanceData = async () => {
+  try {
+    // Funding Rate - BTC i ETH
+    const [btcFundingRes, ethFundingRes, btcOIRes, ethOIRes, btcLiqRes] = await Promise.all([
+      fetch('https://fapi.binance.com/fapi/v1/fundingRate?symbol=BTCUSDT&limit=1'),
+      fetch('https://fapi.binance.com/fapi/v1/fundingRate?symbol=ETHUSDT&limit=1'),
+      fetch('https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT'),
+      fetch('https://fapi.binance.com/fapi/v1/openInterest?symbol=ETHUSDT'),
+      fetch('https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=1h&limit=1')
+    ]);
+
+    const btcFunding = await btcFundingRes.json();
+    const ethFunding = await ethFundingRes.json();
+    const btcOI = await btcOIRes.json();
+    const ethOI = await ethOIRes.json();
+    const btcLongShort = await btcLiqRes.json();
+
+    // Pobierz poprzedni OI dla zmiany procentowej
+    const btcOIPrevRes = await fetch('https://fapi.binance.com/futures/data/openInterestHist?symbol=BTCUSDT&period=1h&limit=2');
+    const btcOIPrev = await btcOIPrevRes.json();
+    
+    let oiChange = 0;
+    if (btcOIPrev && btcOIPrev.length >= 2) {
+      const current = parseFloat(btcOIPrev[0].sumOpenInterestValue);
+      const previous = parseFloat(btcOIPrev[1].sumOpenInterestValue);
+      oiChange = ((current - previous) / previous * 100).toFixed(2);
+    }
+
+    // Long/Short ratio do obliczenia liquidation bias
+    let longPercent = 50;
+    if (btcLongShort && btcLongShort.length > 0) {
+      const ratio = parseFloat(btcLongShort[0].longShortRatio);
+      longPercent = Math.round((ratio / (1 + ratio)) * 100);
+    }
+
+    return {
+      fundingRate: {
+        btc: parseFloat(btcFunding[0]?.fundingRate) || 0,
+        eth: parseFloat(ethFunding[0]?.fundingRate) || 0,
+      },
+      openInterest: {
+        btc: parseFloat(btcOI.openInterest) || 0,
+        eth: parseFloat(ethOI.openInterest) || 0,
+        btcValue: parseFloat(btcOI.openInterest) * 94000 / 1e9, // przybliżona wartość w mld USD
+        change: parseFloat(oiChange)
+      },
+      longShortRatio: {
+        longPercent: longPercent,
+        shortPercent: 100 - longPercent
+      }
+    };
+  } catch (error) {
+    console.error('Binance API Error:', error);
+    return null;
+  }
+};
+
+// Pobierz historię funding rate
+const fetchFundingHistory = async () => {
+  try {
+    const res = await fetch('https://fapi.binance.com/fapi/v1/fundingRate?symbol=BTCUSDT&limit=20');
+    const data = await res.json();
+    return data.map((item, index) => ({
+      time: new Date(item.fundingTime).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }),
+      rate: (parseFloat(item.fundingRate) * 100).toFixed(4),
+      rateNum: parseFloat(item.fundingRate) * 100
+    })).reverse();
+  } catch (error) {
+    console.error('Funding history error:', error);
+    return [];
+  }
+};
+
+// Pobierz top liquidacje (symulowane na podstawie long/short)
+const fetchLiquidations = async () => {
+  try {
+    // Binance nie ma publicznego API dla likwidacji, używamy long/short ratio jako proxy
+    const res = await fetch('https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=1h&limit=24');
+    const data = await res.json();
+    
+    return data.map((item) => {
+      const ratio = parseFloat(item.longShortRatio);
+      const longPct = (ratio / (1 + ratio)) * 100;
+      return {
+        time: new Date(item.timestamp).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }),
+        longs: Math.round(longPct),
+        shorts: Math.round(100 - longPct)
+      };
+    }).reverse().slice(-12);
+  } catch (error) {
+    console.error('Liquidations error:', error);
+    return [];
   }
 };
 
@@ -79,7 +174,7 @@ const sendNotification = (title, body) => {
 };
 
 // ============== MOCK DATA GENERATOR ==============
-const generateMockData = (apiData = null) => {
+const generateMockData = (apiData = null, binanceData = null) => {
   const base = {
     // MACRO
     m2Supply: { value: 21.5 + (Math.random() * 0.3 - 0.15), trend: 'up', change: 2.3 + (Math.random() * 0.5 - 0.25) },
@@ -97,7 +192,7 @@ const generateMockData = (apiData = null) => {
     // FLOWS
     etfFlows: { daily: 245 + Math.floor(Math.random() * 100 - 50), weekly: 1820 + Math.floor(Math.random() * 200 - 100) },
     institutionalBtc: { percentage: 20.4 + (Math.random() * 0.5 - 0.25) },
-    // DAY TRADING
+    // DAY TRADING (will be overwritten by Binance if available)
     rsi: { value: Math.floor(30 + Math.random() * 50), signal: 'neutral' },
     fundingRate: { btc: 0.005 + Math.random() * 0.02, eth: 0.004 + Math.random() * 0.015, signal: 'bullish' },
     openInterest: { value: 18.2 + (Math.random() * 2 - 1), change: 5.4 + (Math.random() * 4 - 2) },
@@ -120,13 +215,38 @@ const generateMockData = (apiData = null) => {
   base.mvrvZScore.zone = base.mvrvZScore.value < 1 ? 'undervalued' : base.mvrvZScore.value > 3 ? 'overvalued' : 'neutral';
   base.volatility.label = base.volatility.value < 2 ? 'Low' : base.volatility.value > 4 ? 'High' : 'Moderate';
   
-  // Merge with API data if available
+  // Merge with CoinGecko API data
   if (apiData) {
     if (apiData.btcPrice) base.btcPrice = { ...base.btcPrice, ...apiData.btcPrice };
     if (apiData.ethPrice) base.ethPrice = { ...base.ethPrice, ...apiData.ethPrice };
     if (apiData.btcDominance) base.btcDominance = apiData.btcDominance;
     if (apiData.volume24h) base.volume24h = apiData.volume24h;
     if (apiData.fearGreed) base.fearGreed = apiData.fearGreed;
+  }
+
+  // Merge with Binance data
+  if (binanceData) {
+    if (binanceData.fundingRate) {
+      base.fundingRate = {
+        btc: binanceData.fundingRate.btc,
+        eth: binanceData.fundingRate.eth,
+        signal: binanceData.fundingRate.btc > 0.0005 ? 'bearish' : binanceData.fundingRate.btc < 0 ? 'very bullish' : 'bullish'
+      };
+    }
+    if (binanceData.openInterest) {
+      base.openInterest = {
+        value: parseFloat(binanceData.openInterest.btcValue?.toFixed(1)) || base.openInterest.value,
+        change: binanceData.openInterest.change || 0,
+        btcAmount: binanceData.openInterest.btc,
+        ethAmount: binanceData.openInterest.eth
+      };
+    }
+    if (binanceData.longShortRatio) {
+      base.liquidations.longPercent = binanceData.longShortRatio.longPercent;
+      base.liquidations.shortPercent = binanceData.longShortRatio.shortPercent;
+      base.orderFlow.buyPressure = binanceData.longShortRatio.longPercent;
+      base.orderFlow.sellPressure = binanceData.longShortRatio.shortPercent;
+    }
   }
   
   return base;
@@ -191,16 +311,42 @@ function App() {
   const [showPortfolio, setShowPortfolio] = useState(false);
   const [showBacktest, setShowBacktest] = useState(false);
   const [apiData, setApiData] = useState(null);
+  const [binanceData, setBinanceData] = useState(null);
+  const [fundingHistory, setFundingHistory] = useState([]);
+  const [longShortHistory, setLongShortHistory] = useState([]);
+  const [apiStatus, setApiStatus] = useState({ coingecko: false, binance: false });
 
   const t = themes[theme];
 
   // Fetch real data
   const fetchData = useCallback(async () => {
-    const realData = await fetchCoinGeckoData();
-    if (realData) {
-      setApiData(realData);
+    // CoinGecko
+    const cgData = await fetchCoinGeckoData();
+    if (cgData) {
+      setApiData(cgData);
+      setApiStatus(prev => ({ ...prev, coingecko: true }));
     }
-    setData(generateMockData(realData));
+
+    // Binance
+    const bnData = await fetchBinanceData();
+    if (bnData) {
+      setBinanceData(bnData);
+      setApiStatus(prev => ({ ...prev, binance: true }));
+    }
+
+    // Funding history
+    const fundingHist = await fetchFundingHistory();
+    if (fundingHist.length > 0) {
+      setFundingHistory(fundingHist);
+    }
+
+    // Long/Short history
+    const lsHist = await fetchLiquidations();
+    if (lsHist.length > 0) {
+      setLongShortHistory(lsHist);
+    }
+
+    setData(generateMockData(cgData, bnData));
     setLastUpdate(new Date());
   }, []);
 
@@ -215,54 +361,29 @@ function App() {
     let score = 0;
     let totalWeight = 0;
     
-    // M2 Supply
-    if (data.m2Supply.trend === 'up') {
-      score += weights.m2Supply;
-    }
+    if (data.m2Supply.trend === 'up') score += weights.m2Supply;
     totalWeight += weights.m2Supply;
     
-    // DXY
-    if (data.dxy.trend === 'down') {
-      score += weights.dxy;
-    }
+    if (data.dxy.trend === 'down') score += weights.dxy;
     totalWeight += weights.dxy;
     
-    // MVRV
-    if (data.mvrvZScore.value < 2) {
-      score += weights.mvrvZScore;
-    } else if (data.mvrvZScore.value < 3) {
-      score += weights.mvrvZScore * 0.5;
-    }
+    if (data.mvrvZScore.value < 2) score += weights.mvrvZScore;
+    else if (data.mvrvZScore.value < 3) score += weights.mvrvZScore * 0.5;
     totalWeight += weights.mvrvZScore;
     
-    // SOPR
-    if (data.sopr.value < 1) {
-      score += weights.sopr;
-    } else if (data.sopr.value < 1.02) {
-      score += weights.sopr * 0.5;
-    }
+    if (data.sopr.value < 1) score += weights.sopr;
+    else if (data.sopr.value < 1.02) score += weights.sopr * 0.5;
     totalWeight += weights.sopr;
     
-    // Exchange Reserves
-    if (data.exchangeReserves.trend === 'outflow') {
-      score += weights.exchangeReserves;
-    }
+    if (data.exchangeReserves.trend === 'outflow') score += weights.exchangeReserves;
     totalWeight += weights.exchangeReserves;
     
-    // ETF Flows
-    if (data.etfFlows.daily > 100) {
-      score += weights.etfFlows;
-    } else if (data.etfFlows.daily > 0) {
-      score += weights.etfFlows * 0.5;
-    }
+    if (data.etfFlows.daily > 100) score += weights.etfFlows;
+    else if (data.etfFlows.daily > 0) score += weights.etfFlows * 0.5;
     totalWeight += weights.etfFlows;
     
-    // Stablecoin Supply
-    if (data.stablecoinSupply.change > 3) {
-      score += weights.stablecoinSupply;
-    } else if (data.stablecoinSupply.change > 0) {
-      score += weights.stablecoinSupply * 0.5;
-    }
+    if (data.stablecoinSupply.change > 3) score += weights.stablecoinSupply;
+    else if (data.stablecoinSupply.change > 0) score += weights.stablecoinSupply * 0.5;
     totalWeight += weights.stablecoinSupply;
     
     return Math.round((score / totalWeight) * 100);
@@ -273,49 +394,34 @@ function App() {
     let totalWeight = 0;
     
     // RSI
-    if (data.rsi.value < 30) {
-      score += weights.rsi;
-    } else if (data.rsi.value < 45) {
-      score += weights.rsi * 0.7;
-    } else if (data.rsi.value < 55) {
-      score += weights.rsi * 0.5;
-    } else if (data.rsi.value < 70) {
-      score += weights.rsi * 0.3;
-    }
+    if (data.rsi.value < 30) score += weights.rsi;
+    else if (data.rsi.value < 45) score += weights.rsi * 0.7;
+    else if (data.rsi.value < 55) score += weights.rsi * 0.5;
+    else if (data.rsi.value < 70) score += weights.rsi * 0.3;
     totalWeight += weights.rsi;
     
-    // Funding Rate
-    if (data.fundingRate.btc < 0.01) {
-      score += weights.fundingRate;
-    } else if (data.fundingRate.btc < 0.03) {
-      score += weights.fundingRate * 0.5;
-    }
+    // Funding Rate (Binance live!)
+    const fundingPct = data.fundingRate.btc * 100;
+    if (fundingPct < 0.01) score += weights.fundingRate;
+    else if (fundingPct < 0.03) score += weights.fundingRate * 0.7;
+    else if (fundingPct < 0.05) score += weights.fundingRate * 0.3;
     totalWeight += weights.fundingRate;
     
-    // Liquidations
-    if (data.liquidations.shortPercent > 60) {
-      score += weights.liquidations;
-    } else if (data.liquidations.shortPercent > 50) {
-      score += weights.liquidations * 0.5;
-    }
+    // Long/Short ratio (Binance live!)
+    if (data.liquidations.shortPercent > 60) score += weights.liquidations;
+    else if (data.liquidations.shortPercent > 55) score += weights.liquidations * 0.7;
+    else if (data.liquidations.shortPercent > 50) score += weights.liquidations * 0.5;
     totalWeight += weights.liquidations;
     
     // Fear & Greed
-    if (data.fearGreed.value < 25) {
-      score += weights.fearGreed;
-    } else if (data.fearGreed.value < 40) {
-      score += weights.fearGreed * 0.7;
-    } else if (data.fearGreed.value < 60) {
-      score += weights.fearGreed * 0.5;
-    }
+    if (data.fearGreed.value < 25) score += weights.fearGreed;
+    else if (data.fearGreed.value < 40) score += weights.fearGreed * 0.7;
+    else if (data.fearGreed.value < 60) score += weights.fearGreed * 0.5;
     totalWeight += weights.fearGreed;
     
-    // Order Flow
-    if (data.orderFlow.buyPressure > 60) {
-      score += weights.orderFlow;
-    } else if (data.orderFlow.buyPressure > 50) {
-      score += weights.orderFlow * 0.5;
-    }
+    // Order Flow (Binance live!)
+    if (data.orderFlow.buyPressure > 55) score += weights.orderFlow;
+    else if (data.orderFlow.buyPressure > 50) score += weights.orderFlow * 0.5;
     totalWeight += weights.orderFlow;
     
     return Math.round((score / totalWeight) * 100);
@@ -335,7 +441,7 @@ function App() {
     };
     
     setScoreHistory(prev => {
-      const updated = [...prev, newEntry].slice(-100); // Keep last 100 entries
+      const updated = [...prev, newEntry].slice(-100);
       saveToStorage('scoreHistory', updated);
       return updated;
     });
@@ -353,25 +459,11 @@ function App() {
   }, [score, alerts]);
 
   // Save settings
-  useEffect(() => {
-    saveToStorage('theme', theme);
-  }, [theme]);
-
-  useEffect(() => {
-    saveToStorage('weights', weights);
-  }, [weights]);
-
-  useEffect(() => {
-    saveToStorage('favorites', favorites);
-  }, [favorites]);
-
-  useEffect(() => {
-    saveToStorage('portfolio', portfolio);
-  }, [portfolio]);
-
-  useEffect(() => {
-    saveToStorage('alerts', alerts);
-  }, [alerts]);
+  useEffect(() => { saveToStorage('theme', theme); }, [theme]);
+  useEffect(() => { saveToStorage('weights', weights); }, [weights]);
+  useEffect(() => { saveToStorage('favorites', favorites); }, [favorites]);
+  useEffect(() => { saveToStorage('portfolio', portfolio); }, [portfolio]);
+  useEffect(() => { saveToStorage('alerts', alerts); }, [alerts]);
 
   // Helpers
   const getDecisionColor = () => {
@@ -401,7 +493,6 @@ function App() {
 
   const portfolioValue = (portfolio.btc * data.btcPrice.value) + (portfolio.eth * data.ethPrice.value);
 
-  // Backtest data
   const backtestData = scoreHistory
     .filter(h => h.mode === tradingMode)
     .slice(-30)
@@ -444,6 +535,26 @@ function App() {
       color: t.textSecondary,
       fontSize: '0.85rem',
     },
+    apiStatus: {
+      display: 'flex',
+      justifyContent: 'center',
+      gap: '15px',
+      marginTop: '8px',
+      fontSize: '0.75rem',
+    },
+    statusBadge: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '5px',
+      padding: '3px 8px',
+      borderRadius: '12px',
+      background: theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+    },
+    statusDot: {
+      width: '8px',
+      height: '8px',
+      borderRadius: '50%',
+    },
     topBar: {
       display: 'flex',
       justifyContent: 'space-between',
@@ -475,6 +586,24 @@ function App() {
       borderRadius: '16px',
       padding: '15px',
       border: `1px solid ${t.cardBorder}`,
+    },
+    cardLive: {
+      background: t.cardBg,
+      borderRadius: '16px',
+      padding: '15px',
+      border: `2px solid ${t.positive}`,
+      position: 'relative',
+    },
+    liveBadge: {
+      position: 'absolute',
+      top: '10px',
+      right: '10px',
+      background: t.positive,
+      color: '#000',
+      padding: '2px 8px',
+      borderRadius: '10px',
+      fontSize: '0.65rem',
+      fontWeight: '700',
     },
     cardHeader: {
       display: 'flex',
@@ -671,8 +800,18 @@ function App() {
         <header style={styles.header}>
           <h1 style={styles.title}>🚀 Crypto Decision Hub</h1>
           <p style={styles.subtitle}>
-            {apiData ? '🟢 Live Data' : '🟡 Demo Data'} | Aktualizacja: {lastUpdate.toLocaleTimeString('pl-PL')}
+            Aktualizacja: {lastUpdate.toLocaleTimeString('pl-PL')}
           </p>
+          <div style={styles.apiStatus}>
+            <div style={styles.statusBadge}>
+              <div style={{ ...styles.statusDot, background: apiStatus.coingecko ? t.positive : t.negative }} />
+              CoinGecko
+            </div>
+            <div style={styles.statusBadge}>
+              <div style={{ ...styles.statusDot, background: apiStatus.binance ? t.positive : t.negative }} />
+              Binance
+            </div>
+          </div>
         </header>
 
         {/* Top Bar */}
@@ -682,13 +821,13 @@ function App() {
               {theme === 'dark' ? '☀️' : '🌙'}
             </button>
             <button style={styles.iconButton} onClick={() => setShowSettings(true)}>
-              ⚙️ Ustawienia
+              ⚙️
             </button>
             <button style={styles.iconButton} onClick={() => setShowPortfolio(true)}>
-              💼 Portfolio
+              💼
             </button>
             <button style={styles.iconButton} onClick={() => setShowBacktest(true)}>
-              📊 Backtest
+              📊
             </button>
           </div>
           <button 
@@ -700,7 +839,7 @@ function App() {
               }
             }}
           >
-            {alerts.enabled ? '🔔' : '🔕'} Alerty
+            {alerts.enabled ? '🔔' : '🔕'}
           </button>
         </div>
 
@@ -729,50 +868,10 @@ function App() {
           </div>
           <p style={{ color: t.textSecondary, fontSize: '0.85rem' }}>
             {tradingMode === 'longterm' 
-              ? 'Agregacja: makro + on-chain + przepływy instytucjonalne'
-              : 'Agregacja: RSI + funding + likwidacje + order flow'}
+              ? 'Agregacja: makro + on-chain + przepływy'
+              : '🟢 Binance Live: funding, OI, long/short ratio'}
           </p>
         </div>
-
-        {/* Favorites Section */}
-        {favorites.length > 0 && (
-          <div style={{ marginBottom: '20px' }}>
-            <h3 style={{ marginBottom: '10px', fontSize: '1rem' }}>⭐ Ulubione</h3>
-            <div style={styles.grid}>
-              {favorites.includes('btcPrice') && (
-                <div style={styles.card}>
-                  <div style={styles.cardHeader}>
-                    <div style={styles.cardTitle}>₿ Bitcoin</div>
-                    <button style={styles.starButton} onClick={() => toggleFavorite('btcPrice')}>⭐</button>
-                  </div>
-                  <div style={styles.cardValue}>${data.btcPrice.value.toLocaleString()}</div>
-                  <div style={{ ...styles.cardChange, color: data.btcPrice.change >= 0 ? t.positive : t.negative }}>
-                    {data.btcPrice.change >= 0 ? '▲' : '▼'} {Math.abs(data.btcPrice.change)}%
-                  </div>
-                </div>
-              )}
-              {favorites.includes('fearGreed') && (
-                <div style={styles.card}>
-                  <div style={styles.cardHeader}>
-                    <div style={styles.cardTitle}>😱 Fear & Greed</div>
-                    <button style={styles.starButton} onClick={() => toggleFavorite('fearGreed')}>⭐</button>
-                  </div>
-                  <div style={styles.cardValue}>{data.fearGreed.value}</div>
-                  <div style={styles.cardChange}>{data.fearGreed.label}</div>
-                </div>
-              )}
-              {favorites.includes('rsi') && (
-                <div style={styles.card}>
-                  <div style={styles.cardHeader}>
-                    <div style={styles.cardTitle}>📉 RSI</div>
-                    <button style={styles.starButton} onClick={() => toggleFavorite('rsi')}>⭐</button>
-                  </div>
-                  <div style={styles.cardValue}>{data.rsi.value}</div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* Tabs */}
         <div style={styles.tabs}>
@@ -800,7 +899,7 @@ function App() {
                 >
                   {tab === 'momentum' && '📉 Momentum'}
                   {tab === 'sentiment' && '🎭 Sentyment'}
-                  {tab === 'liquidations' && '💥 Likwidacje'}
+                  {tab === 'liquidations' && '💥 Pozycje'}
                 </button>
               ))}
             </>
@@ -831,32 +930,23 @@ function App() {
                 <div style={styles.card}>
                   <div style={styles.cardHeader}>
                     <div style={styles.cardTitle}>💲 DXY (Dollar Index)</div>
-                    <button style={styles.starButton} onClick={() => toggleFavorite('dxy')}>
-                      {favorites.includes('dxy') ? '⭐' : '☆'}
-                    </button>
                   </div>
                   <div style={styles.cardValue}>{data.dxy.value.toFixed(2)}</div>
                   <div style={{ ...styles.cardChange, color: t.positive }}>
                     ▼ {Math.abs(data.dxy.change).toFixed(1)}%
                   </div>
                   <div style={styles.signalBox}>
-                    Słabszy dolar sprzyja aktywom ryzykownym
+                    Słabszy dolar sprzyja ryzyku
                   </div>
                 </div>
 
                 <div style={styles.card}>
                   <div style={styles.cardHeader}>
                     <div style={styles.cardTitle}>🏛️ FedWatch</div>
-                    <button style={styles.starButton} onClick={() => toggleFavorite('fedWatch')}>
-                      {favorites.includes('fedWatch') ? '⭐' : '☆'}
-                    </button>
                   </div>
                   <div style={styles.cardValue}>{data.fedWatch.probability}%</div>
                   <div style={{ ...styles.cardChange, color: t.neutral }}>
                     Cięcie: {data.fedWatch.nextCut}
-                  </div>
-                  <div style={styles.signalBox}>
-                    Rynek oczekuje luzowania
                   </div>
                 </div>
               </>
@@ -867,48 +957,33 @@ function App() {
                 <div style={styles.card}>
                   <div style={styles.cardHeader}>
                     <div style={styles.cardTitle}>📈 MVRV Z-Score</div>
-                    <button style={styles.starButton} onClick={() => toggleFavorite('mvrv')}>
-                      {favorites.includes('mvrv') ? '⭐' : '☆'}
-                    </button>
                   </div>
                   <div style={styles.cardValue}>{data.mvrvZScore.value.toFixed(2)}</div>
                   <div style={{ ...styles.cardChange, color: t.positive }}>
                     {data.mvrvZScore.zone}
                   </div>
                   <div style={styles.signalBox}>
-                    &lt;2 = niedowartościowanie, &gt;7 = szczyt
+                    &lt;2 = niedowartościowanie
                   </div>
                 </div>
 
                 <div style={styles.card}>
                   <div style={styles.cardHeader}>
                     <div style={styles.cardTitle}>💎 SOPR</div>
-                    <button style={styles.starButton} onClick={() => toggleFavorite('sopr')}>
-                      {favorites.includes('sopr') ? '⭐' : '☆'}
-                    </button>
                   </div>
                   <div style={styles.cardValue}>{data.sopr.value.toFixed(3)}</div>
                   <div style={{ ...styles.cardChange, color: t.positive }}>
                     {data.sopr.signal}
-                  </div>
-                  <div style={styles.signalBox}>
-                    &lt;1 = akumulacja
                   </div>
                 </div>
 
                 <div style={styles.card}>
                   <div style={styles.cardHeader}>
                     <div style={styles.cardTitle}>🏦 Rezerwy giełd</div>
-                    <button style={styles.starButton} onClick={() => toggleFavorite('reserves')}>
-                      {favorites.includes('reserves') ? '⭐' : '☆'}
-                    </button>
                   </div>
                   <div style={styles.cardValue}>{data.exchangeReserves.btc.toFixed(2)}M BTC</div>
                   <div style={{ ...styles.cardChange, color: t.positive }}>
                     {data.exchangeReserves.trend}
-                  </div>
-                  <div style={styles.signalBox}>
-                    Outflow = bullish
                   </div>
                 </div>
               </>
@@ -919,9 +994,6 @@ function App() {
                 <div style={styles.card}>
                   <div style={styles.cardHeader}>
                     <div style={styles.cardTitle}>📊 ETF Flows</div>
-                    <button style={styles.starButton} onClick={() => toggleFavorite('etf')}>
-                      {favorites.includes('etf') ? '⭐' : '☆'}
-                    </button>
                   </div>
                   <div style={{ ...styles.cardValue, color: data.etfFlows.daily >= 0 ? t.positive : t.negative }}>
                     {data.etfFlows.daily >= 0 ? '+' : ''}${data.etfFlows.daily}M
@@ -936,9 +1008,6 @@ function App() {
                     <div style={styles.cardTitle}>🏢 Instytucjonalny BTC</div>
                   </div>
                   <div style={styles.cardValue}>{data.institutionalBtc.percentage.toFixed(1)}%</div>
-                  <div style={styles.signalBox}>
-                    Supply w rękach instytucji
-                  </div>
                 </div>
 
                 <div style={styles.card}>
@@ -955,7 +1024,7 @@ function App() {
           </div>
         )}
 
-        {/* Cards Grid - Day Trading */}
+        {/* Cards Grid - Day Trading with LIVE Binance data */}
         {tradingMode === 'daytrading' && (
           <div style={styles.grid}>
             {activeTab === 'momentum' && (
@@ -963,9 +1032,6 @@ function App() {
                 <div style={styles.card}>
                   <div style={styles.cardHeader}>
                     <div style={styles.cardTitle}>📉 RSI (14)</div>
-                    <button style={styles.starButton} onClick={() => toggleFavorite('rsi')}>
-                      {favorites.includes('rsi') ? '⭐' : '☆'}
-                    </button>
                   </div>
                   <div style={{ 
                     ...styles.cardValue, 
@@ -992,37 +1058,49 @@ function App() {
                     }} />
                   </div>
                   <div style={styles.signalBox}>
-                    {data.rsi.value < 30 ? '🟢 Wyprzedanie - long' : 
-                     data.rsi.value > 70 ? '🔴 Wykupienie - short' : '🟡 Neutralne'}
+                    {data.rsi.value < 30 ? '🟢 Wyprzedanie' : 
+                     data.rsi.value > 70 ? '🔴 Wykupienie' : '🟡 Neutralne'}
                   </div>
                 </div>
 
-                <div style={styles.card}>
+                {/* LIVE Funding Rate */}
+                <div style={styles.cardLive}>
+                  <div style={styles.liveBadge}>LIVE</div>
                   <div style={styles.cardHeader}>
                     <div style={styles.cardTitle}>💹 Funding Rate</div>
                   </div>
                   <div style={{ 
                     ...styles.cardValue,
-                    color: data.fundingRate.btc > 0.03 ? t.negative : t.positive
+                    color: data.fundingRate.btc > 0.0003 ? t.negative : data.fundingRate.btc < 0 ? t.positive : t.neutral
                   }}>
-                    {(data.fundingRate.btc * 100).toFixed(3)}%
+                    {(data.fundingRate.btc * 100).toFixed(4)}%
                   </div>
                   <div style={styles.cardChange}>
-                    ETH: {(data.fundingRate.eth * 100).toFixed(3)}%
+                    ETH: {(data.fundingRate.eth * 100).toFixed(4)}%
                   </div>
                   <div style={styles.signalBox}>
-                    {data.fundingRate.btc > 0.05 ? '🔴 Przegrzany' : 
-                     data.fundingRate.btc < 0.01 ? '🟢 Niski - bullish' : '🟡 Normalny'}
+                    {data.fundingRate.btc > 0.0005 ? '🔴 Przegrzany - dużo longów' : 
+                     data.fundingRate.btc < 0 ? '🟢 Ujemny - shorty płacą' : 
+                     '🟡 Neutralny funding'}
                   </div>
                 </div>
 
-                <div style={styles.card}>
+                {/* LIVE Open Interest */}
+                <div style={styles.cardLive}>
+                  <div style={styles.liveBadge}>LIVE</div>
                   <div style={styles.cardHeader}>
-                    <div style={styles.cardTitle}>📊 Open Interest</div>
+                    <div style={styles.cardTitle}>📊 Open Interest BTC</div>
                   </div>
-                  <div style={styles.cardValue}>${data.openInterest.value.toFixed(1)}B</div>
+                  <div style={styles.cardValue}>
+                    {data.openInterest.btcAmount ? 
+                      `${(data.openInterest.btcAmount / 1000).toFixed(1)}K BTC` : 
+                      `$${data.openInterest.value?.toFixed(1)}B`}
+                  </div>
                   <div style={{ ...styles.cardChange, color: data.openInterest.change >= 0 ? t.positive : t.negative }}>
                     {data.openInterest.change >= 0 ? '▲' : '▼'} {Math.abs(data.openInterest.change).toFixed(1)}%
+                  </div>
+                  <div style={styles.signalBox}>
+                    Rosnący OI = więcej zaangażowania
                   </div>
                 </div>
               </>
@@ -1030,12 +1108,11 @@ function App() {
 
             {activeTab === 'sentiment' && (
               <>
-                <div style={styles.card}>
+                {/* LIVE Fear & Greed */}
+                <div style={apiStatus.coingecko ? styles.cardLive : styles.card}>
+                  {apiStatus.coingecko && <div style={styles.liveBadge}>LIVE</div>}
                   <div style={styles.cardHeader}>
                     <div style={styles.cardTitle}>😱 Fear & Greed</div>
-                    <button style={styles.starButton} onClick={() => toggleFavorite('fearGreed')}>
-                      {favorites.includes('fearGreed') ? '⭐' : '☆'}
-                    </button>
                   </div>
                   <div style={{ 
                     ...styles.cardValue,
@@ -1045,12 +1122,14 @@ function App() {
                   </div>
                   <div style={styles.cardChange}>{data.fearGreed.label}</div>
                   <div style={styles.signalBox}>
-                    {data.fearGreed.value < 25 ? '🟢 Ekstremalny strach - okazja' : 
+                    {data.fearGreed.value < 25 ? '🟢 Ekstremalny strach - okazja?' : 
                      data.fearGreed.value > 75 ? '🔴 Chciwość - ostrożność' : '🟡 Neutralne'}
                   </div>
                 </div>
 
-                <div style={styles.card}>
+                {/* LIVE Volume */}
+                <div style={apiStatus.coingecko ? styles.cardLive : styles.card}>
+                  {apiStatus.coingecko && <div style={styles.liveBadge}>LIVE</div>}
                   <div style={styles.cardHeader}>
                     <div style={styles.cardTitle}>📈 Volume 24h</div>
                   </div>
@@ -1060,7 +1139,9 @@ function App() {
                   </div>
                 </div>
 
-                <div style={styles.card}>
+                {/* LIVE BTC Dominance */}
+                <div style={apiStatus.coingecko ? styles.cardLive : styles.card}>
+                  {apiStatus.coingecko && <div style={styles.liveBadge}>LIVE</div>}
                   <div style={styles.cardHeader}>
                     <div style={styles.cardTitle}>👑 BTC Dominance</div>
                   </div>
@@ -1074,11 +1155,15 @@ function App() {
 
             {activeTab === 'liquidations' && (
               <>
-                <div style={styles.card}>
+                {/* LIVE Long/Short Ratio */}
+                <div style={styles.cardLive}>
+                  <div style={styles.liveBadge}>LIVE</div>
                   <div style={styles.cardHeader}>
-                    <div style={styles.cardTitle}>💥 Likwidacje 24h</div>
+                    <div style={styles.cardTitle}>⚖️ Long/Short Ratio</div>
                   </div>
-                  <div style={styles.cardValue}>${data.liquidations.last24h}M</div>
+                  <div style={styles.cardValue}>
+                    {(data.liquidations.longPercent / data.liquidations.shortPercent).toFixed(2)}
+                  </div>
                   <div style={styles.liquidationBar}>
                     <div style={{ 
                       width: `${data.liquidations.longPercent}%`, 
@@ -1104,16 +1189,19 @@ function App() {
                     </div>
                   </div>
                   <div style={styles.signalBox}>
-                    {data.liquidations.shortPercent > 60 ? '🟢 Short squeeze' : 
-                     data.liquidations.longPercent > 60 ? '🔴 Long squeeze' : '🟡 Zbalansowane'}
+                    {data.liquidations.longPercent > 55 ? '🔴 Więcej longów - ryzyko spadku' : 
+                     data.liquidations.shortPercent > 55 ? '🟢 Więcej shortów - short squeeze?' : 
+                     '🟡 Zbalansowane'}
                   </div>
                 </div>
 
-                <div style={styles.card}>
+                {/* LIVE Order Flow */}
+                <div style={styles.cardLive}>
+                  <div style={styles.liveBadge}>LIVE</div>
                   <div style={styles.cardHeader}>
-                    <div style={styles.cardTitle}>⚖️ Order Flow</div>
+                    <div style={styles.cardTitle}>📊 Order Flow</div>
                   </div>
-                  <div style={styles.cardValue}>{data.orderFlow.buyPressure}% Buy</div>
+                  <div style={styles.cardValue}>{data.orderFlow.buyPressure}% Long</div>
                   <div style={styles.liquidationBar}>
                     <div style={{ 
                       width: `${data.orderFlow.buyPressure}%`, 
@@ -1146,19 +1234,65 @@ function App() {
                   </div>
                   <div style={styles.cardValue}>{data.volatility.value.toFixed(1)}%</div>
                   <div style={styles.cardChange}>{data.volatility.label}</div>
-                  <div style={styles.signalBox}>
-                    {data.volatility.value > 4 ? 'Szersze SL' : 
-                     data.volatility.value < 2 ? 'Możliwy breakout' : 'Normalnie'}
-                  </div>
                 </div>
               </>
             )}
           </div>
         )}
 
+        {/* Funding Rate History Chart (Day Trading only) */}
+        {tradingMode === 'daytrading' && fundingHistory.length > 0 && (
+          <div style={styles.chartContainer}>
+            <h3 style={{ marginBottom: '15px', fontSize: '1rem' }}>📈 Historia Funding Rate (Binance)</h3>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={fundingHistory}>
+                <XAxis dataKey="time" stroke={t.textSecondary} fontSize={10} />
+                <YAxis stroke={t.textSecondary} fontSize={10} tickFormatter={(v) => `${v}%`} />
+                <Tooltip 
+                  contentStyle={{ 
+                    background: theme === 'dark' ? '#1a1a2e' : '#fff', 
+                    border: `1px solid ${t.cardBorder}`,
+                    borderRadius: '8px',
+                    color: t.text
+                  }}
+                  formatter={(value) => [`${value}%`, 'Funding']}
+                />
+                <Bar 
+                  dataKey="rateNum" 
+                  fill="#7b2ff7"
+                  radius={[4, 4, 0, 0]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        {/* Long/Short History Chart */}
+        {tradingMode === 'daytrading' && longShortHistory.length > 0 && (
+          <div style={styles.chartContainer}>
+            <h3 style={{ marginBottom: '15px', fontSize: '1rem' }}>⚖️ Long/Short History (Binance)</h3>
+            <ResponsiveContainer width="100%" height={200}>
+              <AreaChart data={longShortHistory}>
+                <XAxis dataKey="time" stroke={t.textSecondary} fontSize={10} />
+                <YAxis domain={[0, 100]} stroke={t.textSecondary} fontSize={10} />
+                <Tooltip 
+                  contentStyle={{ 
+                    background: theme === 'dark' ? '#1a1a2e' : '#fff', 
+                    border: `1px solid ${t.cardBorder}`,
+                    borderRadius: '8px',
+                    color: t.text
+                  }} 
+                />
+                <Area type="monotone" dataKey="longs" stackId="1" stroke={t.positive} fill={t.positive} name="Longs %" />
+                <Area type="monotone" dataKey="shorts" stackId="1" stroke={t.negative} fill={t.negative} name="Shorts %" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
         {/* Score History Chart */}
         <div style={styles.chartContainer}>
-          <h3 style={{ marginBottom: '15px', fontSize: '1rem' }}>📈 Historia Score</h3>
+          <h3 style={{ marginBottom: '15px', fontSize: '1rem' }}>📊 Historia Score</h3>
           <ResponsiveContainer width="100%" height={200}>
             <AreaChart data={scoreHistory.filter(h => h.mode === tradingMode).slice(-20)}>
               <XAxis dataKey="time" stroke={t.textSecondary} fontSize={10} />
@@ -1178,7 +1312,8 @@ function App() {
 
         {/* Prices */}
         <div style={styles.grid}>
-          <div style={styles.card}>
+          <div style={apiStatus.coingecko ? styles.cardLive : styles.card}>
+            {apiStatus.coingecko && <div style={styles.liveBadge}>LIVE</div>}
             <div style={styles.cardHeader}>
               <div style={styles.cardTitle}>₿ Bitcoin</div>
               <button style={styles.starButton} onClick={() => toggleFavorite('btcPrice')}>
@@ -1190,7 +1325,8 @@ function App() {
               {data.btcPrice.change >= 0 ? '▲' : '▼'} {Math.abs(data.btcPrice.change).toFixed(1)}%
             </div>
           </div>
-          <div style={styles.card}>
+          <div style={apiStatus.coingecko ? styles.cardLive : styles.card}>
+            {apiStatus.coingecko && <div style={styles.liveBadge}>LIVE</div>}
             <div style={styles.cardHeader}>
               <div style={styles.cardTitle}>Ξ Ethereum</div>
             </div>
@@ -1212,6 +1348,9 @@ function App() {
 
         <footer style={styles.footer}>
           <p>⚠️ To nie jest porada inwestycyjna. DYOR.</p>
+          <p style={{ marginTop: '5px', fontSize: '0.7rem' }}>
+            Data: CoinGecko, Binance Futures, Alternative.me
+          </p>
         </footer>
 
         {/* Settings Modal */}
@@ -1219,11 +1358,11 @@ function App() {
           <div style={styles.modal} onClick={() => setShowSettings(false)}>
             <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
               <div style={styles.modalTitle}>
-                ⚙️ Ustawienia wag
+                ⚙️ Ustawienia
                 <button style={styles.closeButton} onClick={() => setShowSettings(false)}>×</button>
               </div>
               
-              <h4 style={{ marginBottom: '15px' }}>Long-Term</h4>
+              <h4 style={{ marginBottom: '15px' }}>Long-Term Wagi</h4>
               {['m2Supply', 'dxy', 'mvrvZScore', 'sopr', 'exchangeReserves', 'etfFlows'].map(key => (
                 <div key={key} style={{ marginBottom: '15px' }}>
                   <label style={{ fontSize: '0.85rem' }}>
@@ -1240,7 +1379,7 @@ function App() {
                 </div>
               ))}
               
-              <h4 style={{ margin: '20px 0 15px' }}>Day Trading</h4>
+              <h4 style={{ margin: '20px 0 15px' }}>Day Trading Wagi</h4>
               {['rsi', 'fundingRate', 'liquidations', 'fearGreed', 'orderFlow'].map(key => (
                 <div key={key} style={{ marginBottom: '15px' }}>
                   <label style={{ fontSize: '0.85rem' }}>
@@ -1340,7 +1479,7 @@ function App() {
                 marginBottom: '20px'
               }}>
                 <div style={{ fontSize: '0.85rem', color: t.textSecondary, marginBottom: '5px' }}>
-                  Wartość Portfolio
+                  Wartość Portfolio (LIVE)
                 </div>
                 <div style={{ fontSize: '2rem', fontWeight: '700', color: t.positive }}>
                   ${portfolioValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}
@@ -1376,12 +1515,12 @@ function App() {
           <div style={styles.modal} onClick={() => setShowBacktest(false)}>
             <div style={{ ...styles.modalContent, maxWidth: '700px' }} onClick={e => e.stopPropagation()}>
               <div style={styles.modalTitle}>
-                📊 Backtest (ostatnie 30 sygnałów)
+                📊 Backtest
                 <button style={styles.closeButton} onClick={() => setShowBacktest(false)}>×</button>
               </div>
               
               <div style={{ marginBottom: '15px', fontSize: '0.85rem', color: t.textSecondary }}>
-                Sygnały: 🟢 Buy (score ≥70) | 🔴 Sell (score ≤30) | 🟡 Hold
+                🟢 Buy (≥70) | 🔴 Sell (≤30) | 🟡 Hold
               </div>
 
               <div style={{ maxHeight: '400px', overflow: 'auto' }}>
@@ -1392,7 +1531,7 @@ function App() {
                       <th style={{ padding: '8px', textAlign: 'center' }}>Score</th>
                       <th style={{ padding: '8px', textAlign: 'center' }}>Sygnał</th>
                       <th style={{ padding: '8px', textAlign: 'right' }}>BTC</th>
-                      <th style={{ padding: '8px', textAlign: 'right' }}>Zmiana</th>
+                      <th style={{ padding: '8px', textAlign: 'right' }}>Δ%</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1425,9 +1564,9 @@ function App() {
                 fontSize: '0.85rem'
               }}>
                 <strong>Statystyki:</strong><br/>
-                Sygnały Buy: {backtestData.filter(d => d.signal === 'buy').length}<br/>
-                Sygnały Sell: {backtestData.filter(d => d.signal === 'sell').length}<br/>
-                Sygnały Hold: {backtestData.filter(d => d.signal === 'hold').length}
+                Buy: {backtestData.filter(d => d.signal === 'buy').length} |
+                Sell: {backtestData.filter(d => d.signal === 'sell').length} |
+                Hold: {backtestData.filter(d => d.signal === 'hold').length}
               </div>
             </div>
           </div>
