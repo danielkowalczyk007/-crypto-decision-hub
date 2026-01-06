@@ -89,6 +89,57 @@ const fetchFredData = async () => {
   } catch (error) { console.error('FRED Error:', error); return null; }
 };
 
+// ============== MARKET STRUCTURE API ==============
+const fetchMarketStructure = async () => {
+  try {
+    const response = await fetch(
+      'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&sparkline=false&price_change_percentage=24h'
+    );
+    const data = await response.json();
+    
+    // Sort by 24h change
+    const sorted = [...data].sort((a, b) => 
+      (b.price_change_percentage_24h || 0) - (a.price_change_percentage_24h || 0)
+    );
+    
+    const topGainers = sorted.slice(0, 10).map(coin => ({
+      name: coin.symbol.toUpperCase(),
+      fullName: coin.name,
+      change24h: coin.price_change_percentage_24h?.toFixed(2) || '0.00',
+      price: coin.current_price,
+      marketCap: coin.market_cap
+    }));
+    
+    const topLosers = sorted.slice(-10).reverse().map(coin => ({
+      name: coin.symbol.toUpperCase(),
+      fullName: coin.name,
+      change24h: coin.price_change_percentage_24h?.toFixed(2) || '0.00',
+      price: coin.current_price,
+      marketCap: coin.market_cap
+    }));
+    
+    // Calculate market breadth
+    const gainers = data.filter(c => (c.price_change_percentage_24h || 0) > 0).length;
+    const losers = data.filter(c => (c.price_change_percentage_24h || 0) < 0).length;
+    const unchanged = data.filter(c => (c.price_change_percentage_24h || 0) === 0).length;
+    
+    return {
+      topGainers,
+      topLosers,
+      marketBreadth: {
+        gainers,
+        losers,
+        unchanged,
+        ratio: (gainers / (gainers + losers) * 100).toFixed(0),
+        total: data.length
+      }
+    };
+  } catch (error) { 
+    console.error('Market Structure Error:', error); 
+    return null; 
+  }
+};
+
 // ============== TRADINGVIEW WIDGETS ==============
 
 const TradingViewChart = ({ symbol = 'BINANCE:BTCUSDT', theme = 'dark' }) => {
@@ -422,32 +473,36 @@ const Card = ({ children, helpKey, onHelp, style, theme, signalColor, isLive }) 
       borderLeft: signalColor ? `5px solid ${signalColor}` : `1px solid ${t.border}`,
       ...style 
     }}>
-      {/* Live badge + Help button */}
-      <div style={{ position: 'absolute', top: '8px', right: '8px', display: 'flex', alignItems: 'center', gap: '6px', zIndex: 10 }}>
-        {isLive && (
-          <span style={{
-            fontSize: '8px', padding: '2px 5px', borderRadius: '4px',
-            background: theme === 'dark' ? '#22c55e18' : '#16a34a15',
-            color: theme === 'dark' ? '#22c55e' : '#16a34a',
-            fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px'
-          }}>
-            <span style={{ 
-              width: '5px', height: '5px', borderRadius: '50%', 
-              background: theme === 'dark' ? '#22c55e' : '#16a34a',
-              animation: 'pulse 2s infinite'
-            }}></span>
-            LIVE
-          </span>
-        )}
-        {helpKey && (
-          <button onClick={() => onHelp(helpKey)} style={{
-            width: '22px', height: '22px',
-            borderRadius: '50%', background: t.helpBg, border: 'none', color: t.helpColor,
-            fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'flex',
-            alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s', opacity: 0.7
-          }}>?</button>
-        )}
-      </div>
+      {/* Help button - prawy górny róg */}
+      {helpKey && (
+        <button onClick={() => onHelp(helpKey)} style={{
+          position: 'absolute', top: '8px', right: '8px',
+          width: '22px', height: '22px',
+          borderRadius: '50%', background: t.helpBg, border: 'none', color: t.helpColor,
+          fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'flex',
+          alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s', opacity: 0.7,
+          zIndex: 10
+        }}>?</button>
+      )}
+      
+      {/* Live badge - prawy dolny róg */}
+      {isLive && (
+        <span style={{
+          position: 'absolute', bottom: '6px', right: '8px',
+          fontSize: '8px', padding: '2px 5px', borderRadius: '4px',
+          background: theme === 'dark' ? '#22c55e18' : '#16a34a15',
+          color: theme === 'dark' ? '#22c55e' : '#16a34a',
+          fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px'
+        }}>
+          <span style={{ 
+            width: '5px', height: '5px', borderRadius: '50%', 
+            background: theme === 'dark' ? '#22c55e' : '#16a34a',
+            animation: 'pulse 2s infinite'
+          }}></span>
+          LIVE
+        </span>
+      )}
+      
       {children}
       <style>{`
         @keyframes pulse {
@@ -468,6 +523,40 @@ const LiveTag = ({ theme }) => (
     fontWeight: '600', marginLeft: '6px'
   }}>● LIVE</span>
 );
+
+// ============== API STATUS BADGE ==============
+const ApiStatusBadge = ({ status, label, theme }) => {
+  const colors = {
+    live: theme === 'dark' ? '#22c55e' : '#16a34a',
+    loading: theme === 'dark' ? '#f59e0b' : '#d97706',
+    error: theme === 'dark' ? '#ef4444' : '#dc2626',
+    offline: theme === 'dark' ? '#64748b' : '#94a3b8'
+  };
+  const color = colors[status] || colors.offline;
+  
+  return (
+    <span style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '4px',
+      padding: '2px 6px',
+      borderRadius: '4px',
+      background: `${color}18`,
+      fontSize: '9px',
+      fontWeight: '600',
+      color: color
+    }}>
+      <span style={{
+        width: '5px',
+        height: '5px',
+        borderRadius: '50%',
+        background: color,
+        animation: status === 'live' ? 'pulse 2s infinite' : 'none'
+      }} />
+      {label}
+    </span>
+  );
+};
 
 // ============== MINI SCORE GAUGE (for 3 scores) ==============
 // V2: Kolorowe segmenty + needle + bez artefaktów renderowania
@@ -593,8 +682,18 @@ function App() {
   const [binanceData, setBinanceData] = useState(null);
   const [defiData, setDefiData] = useState(null);
   const [fredData, setFredData] = useState(null);
+  const [msData, setMsData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(null);
+  
+  // API Status states
+  const [apiStatus, setApiStatus] = useState({
+    coingecko: 'loading',
+    binance: 'loading',
+    defillama: 'loading',
+    fred: 'loading',
+    marketStructure: 'loading'
+  });
   
   // Charts state
   const [tvSymbol, setTvSymbol] = useState('BINANCE:BTCUSDT');
@@ -615,16 +714,37 @@ function App() {
   // Fetch all data
   const fetchAllData = useCallback(async () => {
     setLoading(true);
-    const [cg, bn, defi, fred] = await Promise.all([
+    setApiStatus({
+      coingecko: 'loading',
+      binance: 'loading',
+      defillama: 'loading',
+      fred: 'loading',
+      marketStructure: 'loading'
+    });
+    
+    const [cg, bn, defi, fred, ms] = await Promise.all([
       fetchCoinGeckoData(),
       fetchBinanceData(),
       fetchDefiLlamaData(),
-      fetchFredData()
+      fetchFredData(),
+      fetchMarketStructure()
     ]);
-    if (cg) setCgData(cg);
-    if (bn) setBinanceData(bn);
-    if (defi) setDefiData(defi);
-    if (fred) setFredData(fred);
+    
+    if (cg) { setCgData(cg); setApiStatus(prev => ({ ...prev, coingecko: 'live' })); }
+    else { setApiStatus(prev => ({ ...prev, coingecko: 'error' })); }
+    
+    if (bn) { setBinanceData(bn); setApiStatus(prev => ({ ...prev, binance: 'live' })); }
+    else { setApiStatus(prev => ({ ...prev, binance: 'error' })); }
+    
+    if (defi) { setDefiData(defi); setApiStatus(prev => ({ ...prev, defillama: 'live' })); }
+    else { setApiStatus(prev => ({ ...prev, defillama: 'error' })); }
+    
+    if (fred) { setFredData(fred); setApiStatus(prev => ({ ...prev, fred: 'live' })); }
+    else { setApiStatus(prev => ({ ...prev, fred: 'error' })); }
+    
+    if (ms) { setMsData(ms); setApiStatus(prev => ({ ...prev, marketStructure: 'live' })); }
+    else { setApiStatus(prev => ({ ...prev, marketStructure: 'error' })); }
+    
     setLastUpdate(new Date());
     setLoading(false);
   }, []);
@@ -752,9 +872,10 @@ function App() {
 
   const tabs = [
     { id: 'crypto', label: '₿ Crypto' },
+    { id: 'structure', label: '📊 Structure' },
     { id: 'macro', label: '🏦 Macro' },
     { id: 'defi', label: '🦙 DeFi' },
-    { id: 'derivatives', label: '📊 Deriv' },
+    { id: 'derivatives', label: '📉 Deriv' },
     { id: 'charts', label: '📈 Charts' }
   ];
 
@@ -959,6 +1080,224 @@ function App() {
             <Card theme={theme} isLive={!!cgData?.volume24h}>
               <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>📊 Volume 24h</div>
               <div style={{ fontSize: '18px', fontWeight: '700' }}>${cgData?.volume24h || '---'}B</div>
+            </Card>
+          </div>
+        )}
+
+        {/* STRUCTURE TAB - Market Structure & Top Gainers/Losers */}
+        {activeTab === 'structure' && (
+          <div style={{ display: 'grid', gap: '12px' }}>
+            {/* API Status Bar */}
+            <div style={{ 
+              display: 'flex', 
+              gap: '8px', 
+              flexWrap: 'wrap',
+              padding: '8px 12px',
+              background: t.cardBg,
+              borderRadius: '8px',
+              border: `1px solid ${t.border}`
+            }}>
+              <ApiStatusBadge status={apiStatus.coingecko} label="CoinGecko" theme={theme} />
+              <ApiStatusBadge status={apiStatus.marketStructure} label="MS" theme={theme} />
+              <ApiStatusBadge status={apiStatus.binance} label="Binance" theme={theme} />
+              <ApiStatusBadge status={apiStatus.defillama} label="DefiLlama" theme={theme} />
+            </div>
+
+            {/* Market Breadth */}
+            <Card theme={theme} isLive={!!msData?.marketBreadth}>
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                marginBottom: '12px'
+              }}>
+                <div style={{ fontSize: '13px', fontWeight: '600' }}>
+                  📊 Market Breadth (Top 100)
+                </div>
+                <ApiStatusBadge status={apiStatus.marketStructure} label="LIVE" theme={theme} />
+              </div>
+              
+              {msData?.marketBreadth ? (
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <div style={{
+                    flex: 1,
+                    padding: '12px',
+                    background: `${t.positive}12`,
+                    borderRadius: '10px',
+                    textAlign: 'center',
+                    border: `1px solid ${t.positive}30`
+                  }}>
+                    <div style={{ fontSize: '26px', fontWeight: '700', color: t.positive }}>
+                      {msData.marketBreadth.gainers}
+                    </div>
+                    <div style={{ fontSize: '10px', color: t.textSecondary, marginTop: '2px' }}>Gainers</div>
+                  </div>
+                  <div style={{
+                    flex: 1,
+                    padding: '12px',
+                    background: `${t.negative}12`,
+                    borderRadius: '10px',
+                    textAlign: 'center',
+                    border: `1px solid ${t.negative}30`
+                  }}>
+                    <div style={{ fontSize: '26px', fontWeight: '700', color: t.negative }}>
+                      {msData.marketBreadth.losers}
+                    </div>
+                    <div style={{ fontSize: '10px', color: t.textSecondary, marginTop: '2px' }}>Losers</div>
+                  </div>
+                  <div style={{
+                    flex: 1,
+                    padding: '12px',
+                    background: `${t.accent}12`,
+                    borderRadius: '10px',
+                    textAlign: 'center',
+                    border: `1px solid ${t.accent}30`
+                  }}>
+                    <div style={{ fontSize: '26px', fontWeight: '700', color: t.accent }}>
+                      {msData.marketBreadth.ratio}%
+                    </div>
+                    <div style={{ fontSize: '10px', color: t.textSecondary, marginTop: '2px' }}>Bullish</div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '20px', color: t.textSecondary }}>
+                  ⏳ Ładowanie...
+                </div>
+              )}
+            </Card>
+            
+            {/* Top Gainers & Losers Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              {/* Top Gainers */}
+              <Card theme={theme} isLive={!!msData?.topGainers}>
+                <div style={{ 
+                  fontSize: '12px', 
+                  fontWeight: '600', 
+                  marginBottom: '10px', 
+                  color: t.positive,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}>
+                  🚀 Top Gainers 24h
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {msData?.topGainers?.slice(0, 5).map((coin, i) => (
+                    <div key={i} style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center',
+                      padding: '6px 8px',
+                      background: `${t.positive}08`,
+                      borderRadius: '6px',
+                      borderLeft: `3px solid ${t.positive}`
+                    }}>
+                      <div>
+                        <span style={{ fontWeight: '600', fontSize: '11px' }}>{coin.name}</span>
+                        <div style={{ fontSize: '9px', color: t.textSecondary }}>{coin.fullName}</div>
+                      </div>
+                      <span style={{ 
+                        fontSize: '12px', 
+                        color: t.positive, 
+                        fontWeight: '700',
+                        background: `${t.positive}18`,
+                        padding: '2px 6px',
+                        borderRadius: '4px'
+                      }}>
+                        +{coin.change24h}%
+                      </span>
+                    </div>
+                  )) || (
+                    <div style={{ fontSize: '10px', color: t.textSecondary, textAlign: 'center', padding: '10px' }}>
+                      ⏳ Ładowanie...
+                    </div>
+                  )}
+                </div>
+              </Card>
+              
+              {/* Top Losers */}
+              <Card theme={theme} isLive={!!msData?.topLosers}>
+                <div style={{ 
+                  fontSize: '12px', 
+                  fontWeight: '600', 
+                  marginBottom: '10px', 
+                  color: t.negative,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}>
+                  📉 Top Losers 24h
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {msData?.topLosers?.slice(0, 5).map((coin, i) => (
+                    <div key={i} style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center',
+                      padding: '6px 8px',
+                      background: `${t.negative}08`,
+                      borderRadius: '6px',
+                      borderLeft: `3px solid ${t.negative}`
+                    }}>
+                      <div>
+                        <span style={{ fontWeight: '600', fontSize: '11px' }}>{coin.name}</span>
+                        <div style={{ fontSize: '9px', color: t.textSecondary }}>{coin.fullName}</div>
+                      </div>
+                      <span style={{ 
+                        fontSize: '12px', 
+                        color: t.negative, 
+                        fontWeight: '700',
+                        background: `${t.negative}18`,
+                        padding: '2px 6px',
+                        borderRadius: '4px'
+                      }}>
+                        {coin.change24h}%
+                      </span>
+                    </div>
+                  )) || (
+                    <div style={{ fontSize: '10px', color: t.textSecondary, textAlign: 'center', padding: '10px' }}>
+                      ⏳ Ładowanie...
+                    </div>
+                  )}
+                </div>
+              </Card>
+            </div>
+
+            {/* Extended Gainers List */}
+            <Card theme={theme}>
+              <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '10px' }}>
+                📈 Rozszerzona lista (Top 10)
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                {msData?.topGainers?.slice(5, 10).map((coin, i) => (
+                  <div key={i} style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center',
+                    padding: '4px 6px',
+                    background: t.cardBg,
+                    borderRadius: '4px',
+                    fontSize: '10px'
+                  }}>
+                    <span style={{ fontWeight: '500' }}>{i + 6}. {coin.name}</span>
+                    <span style={{ color: t.positive, fontWeight: '600' }}>+{coin.change24h}%</span>
+                  </div>
+                ))}
+                {msData?.topLosers?.slice(5, 10).map((coin, i) => (
+                  <div key={i} style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center',
+                    padding: '4px 6px',
+                    background: t.cardBg,
+                    borderRadius: '4px',
+                    fontSize: '10px'
+                  }}>
+                    <span style={{ fontWeight: '500' }}>{i + 6}. {coin.name}</span>
+                    <span style={{ color: t.negative, fontWeight: '600' }}>{coin.change24h}%</span>
+                  </div>
+                ))}
+              </div>
             </Card>
           </div>
         )}
