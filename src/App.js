@@ -89,39 +89,51 @@ const fetchFredData = async () => {
   } catch (error) { console.error('FRED Error:', error); return null; }
 };
 
-// ============== MARKET STRUCTURE API ==============
+// ============== MARKET STRUCTURE API (BINANCE) ==============
 const fetchMarketStructure = async () => {
   try {
-    const response = await fetch(
-      'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&sparkline=false&price_change_percentage=24h'
-    );
+    const response = await fetch('https://api.binance.com/api/v3/ticker/24hr');
     const data = await response.json();
     
-    // Sort by 24h change
-    const sorted = [...data].sort((a, b) => 
-      (b.price_change_percentage_24h || 0) - (a.price_change_percentage_24h || 0)
+    // Filtruj tylko pary USDT (żeby nie duplikować) i usuń stablecoiny
+    const usdtPairs = data.filter(t => 
+      t.symbol.endsWith('USDT') && 
+      !t.symbol.includes('BUSD') &&
+      !t.symbol.includes('USDC') &&
+      !t.symbol.includes('TUSD') &&
+      !t.symbol.includes('FDUSD') &&
+      parseFloat(t.quoteVolume) > 1000000 // min $1M volume
     );
     
-    const topGainers = sorted.slice(0, 10).map(coin => ({
-      name: coin.symbol.toUpperCase(),
-      fullName: coin.name,
-      change24h: coin.price_change_percentage_24h?.toFixed(2) || '0.00',
-      price: coin.current_price,
-      marketCap: coin.market_cap
+    // Sortuj po zmianie 24h
+    const sorted = [...usdtPairs].sort((a, b) => 
+      parseFloat(b.priceChangePercent) - parseFloat(a.priceChangePercent)
+    );
+    
+    const topGainers = sorted.slice(0, 15).map(t => ({
+      name: t.symbol.replace('USDT', ''),
+      symbol: t.symbol,
+      change24h: parseFloat(t.priceChangePercent).toFixed(2),
+      price: parseFloat(t.lastPrice),
+      volume: parseFloat(t.quoteVolume),
+      high24h: parseFloat(t.highPrice),
+      low24h: parseFloat(t.lowPrice)
     }));
     
-    const topLosers = sorted.slice(-10).reverse().map(coin => ({
-      name: coin.symbol.toUpperCase(),
-      fullName: coin.name,
-      change24h: coin.price_change_percentage_24h?.toFixed(2) || '0.00',
-      price: coin.current_price,
-      marketCap: coin.market_cap
+    const topLosers = sorted.slice(-15).reverse().map(t => ({
+      name: t.symbol.replace('USDT', ''),
+      symbol: t.symbol,
+      change24h: parseFloat(t.priceChangePercent).toFixed(2),
+      price: parseFloat(t.lastPrice),
+      volume: parseFloat(t.quoteVolume),
+      high24h: parseFloat(t.highPrice),
+      low24h: parseFloat(t.lowPrice)
     }));
     
-    // Calculate market breadth
-    const gainers = data.filter(c => (c.price_change_percentage_24h || 0) > 0).length;
-    const losers = data.filter(c => (c.price_change_percentage_24h || 0) < 0).length;
-    const unchanged = data.filter(c => (c.price_change_percentage_24h || 0) === 0).length;
+    // Market breadth - wszystkie pary USDT
+    const gainers = usdtPairs.filter(t => parseFloat(t.priceChangePercent) > 0).length;
+    const losers = usdtPairs.filter(t => parseFloat(t.priceChangePercent) < 0).length;
+    const unchanged = usdtPairs.filter(t => parseFloat(t.priceChangePercent) === 0).length;
     
     return {
       topGainers,
@@ -131,11 +143,12 @@ const fetchMarketStructure = async () => {
         losers,
         unchanged,
         ratio: (gainers / (gainers + losers) * 100).toFixed(0),
-        total: data.length
-      }
+        total: usdtPairs.length
+      },
+      source: 'Binance'
     };
   } catch (error) { 
-    console.error('Market Structure Error:', error); 
+    console.error('Binance Market Structure Error:', error); 
     return null; 
   }
 };
@@ -1112,9 +1125,12 @@ function App() {
                 marginBottom: '12px'
               }}>
                 <div style={{ fontSize: '13px', fontWeight: '600' }}>
-                  📊 Market Breadth (Top 100)
+                  📊 Market Breadth 
+                  <span style={{ fontSize: '10px', color: t.textSecondary, fontWeight: '400', marginLeft: '6px' }}>
+                    ({msData?.marketBreadth?.total || '...'} par USDT)
+                  </span>
                 </div>
-                <ApiStatusBadge status={apiStatus.marketStructure} label="LIVE" theme={theme} />
+                <ApiStatusBadge status={apiStatus.marketStructure} label="Binance" theme={theme} />
               </div>
               
               {msData?.marketBreadth ? (
@@ -1180,6 +1196,7 @@ function App() {
                   gap: '6px'
                 }}>
                   🚀 Top Gainers 24h
+                  <span style={{ fontSize: '8px', color: t.textSecondary, fontWeight: '400' }}>Binance</span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   {msData?.topGainers?.slice(0, 5).map((coin, i) => (
@@ -1193,15 +1210,17 @@ function App() {
                       borderLeft: `3px solid ${t.positive}`
                     }}>
                       <div>
-                        <span style={{ fontWeight: '600', fontSize: '11px' }}>{coin.name}</span>
-                        <div style={{ fontSize: '9px', color: t.textSecondary }}>{coin.fullName}</div>
+                        <span style={{ fontWeight: '600', fontSize: '12px' }}>{coin.name}</span>
+                        <div style={{ fontSize: '9px', color: t.textSecondary }}>
+                          ${coin.price < 1 ? coin.price.toFixed(6) : coin.price.toFixed(2)}
+                        </div>
                       </div>
                       <span style={{ 
-                        fontSize: '12px', 
+                        fontSize: '13px', 
                         color: t.positive, 
                         fontWeight: '700',
                         background: `${t.positive}18`,
-                        padding: '2px 6px',
+                        padding: '3px 8px',
                         borderRadius: '4px'
                       }}>
                         +{coin.change24h}%
@@ -1227,6 +1246,7 @@ function App() {
                   gap: '6px'
                 }}>
                   📉 Top Losers 24h
+                  <span style={{ fontSize: '8px', color: t.textSecondary, fontWeight: '400' }}>Binance</span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   {msData?.topLosers?.slice(0, 5).map((coin, i) => (
@@ -1240,15 +1260,17 @@ function App() {
                       borderLeft: `3px solid ${t.negative}`
                     }}>
                       <div>
-                        <span style={{ fontWeight: '600', fontSize: '11px' }}>{coin.name}</span>
-                        <div style={{ fontSize: '9px', color: t.textSecondary }}>{coin.fullName}</div>
+                        <span style={{ fontWeight: '600', fontSize: '12px' }}>{coin.name}</span>
+                        <div style={{ fontSize: '9px', color: t.textSecondary }}>
+                          ${coin.price < 1 ? coin.price.toFixed(6) : coin.price.toFixed(2)}
+                        </div>
                       </div>
                       <span style={{ 
-                        fontSize: '12px', 
+                        fontSize: '13px', 
                         color: t.negative, 
                         fontWeight: '700',
                         background: `${t.negative}18`,
-                        padding: '2px 6px',
+                        padding: '3px 8px',
                         borderRadius: '4px'
                       }}>
                         {coin.change24h}%
