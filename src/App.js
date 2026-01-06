@@ -89,6 +89,85 @@ const fetchFredData = async () => {
   } catch (error) { console.error('FRED Error:', error); return null; }
 };
 
+// ============== ALTSEASON & STABLECOIN METRICS ==============
+const fetchAltseasonData = async () => {
+  try {
+    const [globalRes, ethBtcRes, stableRes] = await Promise.all([
+      fetch('https://api.coingecko.com/api/v3/global'),
+      fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum,bitcoin&vs_currencies=btc,usd'),
+      fetch('https://stablecoins.llama.fi/stablecoins?includePrices=true')
+    ]);
+    
+    const global = await globalRes.json();
+    const ethBtc = await ethBtcRes.json();
+    const stables = await stableRes.json();
+    
+    // ETH/BTC Ratio
+    const ethBtcRatio = ethBtc.ethereum?.btc || 0;
+    
+    // Total Market Cap i Total2 (bez BTC)
+    const totalMcap = global.data?.total_market_cap?.usd || 0;
+    const btcMcap = global.data?.market_cap_percentage?.btc * totalMcap / 100 || 0;
+    const total2 = (totalMcap - btcMcap) / 1e12; // w trylionach
+    
+    // BTC Dominance
+    const btcDominance = global.data?.market_cap_percentage?.btc || 50;
+    
+    // Znajdź USDT i USDC
+    const usdt = stables.peggedAssets?.find(s => s.symbol === 'USDT');
+    const usdc = stables.peggedAssets?.find(s => s.symbol === 'USDC');
+    
+    const usdtMcap = usdt?.circulating?.peggedUSD || 0;
+    const usdcMcap = usdc?.circulating?.peggedUSD || 0;
+    const totalStableMcap = usdtMcap + usdcMcap;
+    
+    // Zmiany 7d dla stablecoinów
+    const usdtChange7d = usdt?.circulatingPrevWeek?.peggedUSD 
+      ? ((usdtMcap - usdt.circulatingPrevWeek.peggedUSD) / usdt.circulatingPrevWeek.peggedUSD * 100)
+      : 0;
+    const usdcChange7d = usdc?.circulatingPrevWeek?.peggedUSD
+      ? ((usdcMcap - usdc.circulatingPrevWeek.peggedUSD) / usdc.circulatingPrevWeek.peggedUSD * 100)
+      : 0;
+    
+    // Prosty Altseason Index: bazujemy na BTC dominance
+    // <45% = altseason (75+), 45-50% = 50-75, 50-55% = 25-50, >55% = BTC season (0-25)
+    let altseasonIndex = 50;
+    if (btcDominance < 40) altseasonIndex = 90;
+    else if (btcDominance < 45) altseasonIndex = 75;
+    else if (btcDominance < 50) altseasonIndex = 60;
+    else if (btcDominance < 55) altseasonIndex = 40;
+    else if (btcDominance < 60) altseasonIndex = 25;
+    else altseasonIndex = 10;
+    
+    // Bonus za ETH/BTC ratio
+    if (ethBtcRatio > 0.055) altseasonIndex = Math.min(100, altseasonIndex + 15);
+    else if (ethBtcRatio > 0.045) altseasonIndex = Math.min(100, altseasonIndex + 5);
+    else if (ethBtcRatio < 0.03) altseasonIndex = Math.max(0, altseasonIndex - 15);
+    
+    return {
+      ethBtcRatio: parseFloat(ethBtcRatio.toFixed(5)),
+      total2: parseFloat(total2.toFixed(3)),
+      btcDominance: parseFloat(btcDominance.toFixed(1)),
+      altseasonIndex: Math.round(altseasonIndex),
+      stablecoins: {
+        usdt: {
+          mcap: parseFloat((usdtMcap / 1e9).toFixed(2)),
+          change7d: parseFloat(usdtChange7d.toFixed(2))
+        },
+        usdc: {
+          mcap: parseFloat((usdcMcap / 1e9).toFixed(2)),
+          change7d: parseFloat(usdcChange7d.toFixed(2))
+        },
+        total: parseFloat((totalStableMcap / 1e9).toFixed(2)),
+        usdtDominance: parseFloat((usdtMcap / totalStableMcap * 100).toFixed(1))
+      }
+    };
+  } catch (error) {
+    console.error('Altseason Data Error:', error);
+    return null;
+  }
+};
+
 // ============== MARKET STRUCTURE API (BINANCE) ==============
 const fetchMarketStructure = async () => {
   try {
@@ -364,6 +443,58 @@ const helpContent = {
     ],
     tip: 'Ekstremalne wartości L/S często poprzedzają odwrócenie trendu.',
     source: 'Binance API (LIVE)'
+  },
+  altseasonIndex: {
+    title: '🌊 Altseason Index',
+    emoji: '🌊',
+    description: 'Wskaźnik pokazujący czy jesteśmy w okresie dominacji altcoinów nad Bitcoinem.',
+    interpretation: [
+      { condition: '75-100: Altseason', signal: 'bullish', text: '🟢 Silny okres altcoinów - rozważ ekspozycję na alty' },
+      { condition: '50-74: Alty rosną', signal: 'bullish', text: '🟢 Altcoiny outperformują BTC' },
+      { condition: '40-49: Neutralny', signal: 'neutral', text: '🟡 Brak wyraźnego trendu' },
+      { condition: '25-39: BTC dominuje', signal: 'warning', text: '🟠 Bitcoin przewodzi - bezpieczniej w BTC' },
+      { condition: '0-24: BTC Season', signal: 'bearish', text: '🔴 Kapitał koncentruje się w BTC' }
+    ],
+    tip: 'Index bazuje na BTC Dominance i ETH/BTC ratio. Historycznie altseason następuje po silnych wzrostach BTC.',
+    source: 'CoinGecko API (kalkulowany)'
+  },
+  ethBtcRatio: {
+    title: '⚡ ETH/BTC Ratio',
+    emoji: '⚡',
+    description: 'Stosunek ceny ETH do BTC - kluczowy wskaźnik siły altcoinów.',
+    interpretation: [
+      { condition: '> 0.055', signal: 'bullish', text: '🟢 ETH bardzo silny - altseason sygnał' },
+      { condition: '0.045-0.055', signal: 'bullish', text: '🟢 ETH outperformuje BTC' },
+      { condition: '0.035-0.045', signal: 'neutral', text: '🟡 Neutralny zakres' },
+      { condition: '< 0.035', signal: 'bearish', text: '🔴 BTC dominuje - risk-off dla altów' }
+    ],
+    tip: 'ETH/BTC > 0.05 historycznie sygnalizuje silną fazę altcoinów. Spadający ratio = uciekaj do BTC.',
+    source: 'CoinGecko API (LIVE)'
+  },
+  total2: {
+    title: '📊 Total2 (bez BTC)',
+    emoji: '📊',
+    description: 'Łączna kapitalizacja rynku crypto bez Bitcoin - miara siły altcoinów.',
+    interpretation: [
+      { condition: 'Total2 rośnie szybciej niż BTC', signal: 'bullish', text: '🟢 Kapitał płynie do altcoinów' },
+      { condition: 'Total2 rośnie wolniej niż BTC', signal: 'neutral', text: '🟡 BTC prowadzi wzrosty' },
+      { condition: 'Total2 spada', signal: 'bearish', text: '🔴 Kapitał ucieka z altcoinów' }
+    ],
+    tip: 'Porównuj dynamikę Total2 vs BTC dla timing altseason. Rosnące Total2 przy spadającym BTC = rotacja.',
+    source: 'CoinGecko API (LIVE)'
+  },
+  stablecoinFlows: {
+    title: '💵 Stablecoin Flows',
+    emoji: '💵',
+    description: 'Przepływy kapitału w głównych stablecoinach (USDT, USDC) - "suchy proch" gotowy do inwestycji.',
+    interpretation: [
+      { condition: 'Oba rosną', signal: 'bullish', text: '🟢 Nowy kapitał wchodzi na rynek' },
+      { condition: 'USDC rośnie > USDT', signal: 'bullish', text: '🟢 Kapitał instytucjonalny napływa' },
+      { condition: 'Oba spadają', signal: 'bearish', text: '🔴 Kapitał opuszcza ekosystem crypto' },
+      { condition: 'USDT rośnie, USDC spada', signal: 'neutral', text: '🟡 Rotacja między stablecoinami' }
+    ],
+    tip: 'Rosnąca podaż stablecoinów to paliwo dla przyszłych wzrostów. USDC preferowany przez instytucje.',
+    source: 'DefiLlama API (LIVE)'
   },
   technicalAnalysis: {
     title: '📊 Analiza Techniczna',
@@ -696,6 +827,7 @@ function App() {
   const [defiData, setDefiData] = useState(null);
   const [fredData, setFredData] = useState(null);
   const [msData, setMsData] = useState(null);
+  const [altseasonData, setAltseasonData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(null);
   
@@ -735,12 +867,13 @@ function App() {
       marketStructure: 'loading'
     });
     
-    const [cg, bn, defi, fred, ms] = await Promise.all([
+    const [cg, bn, defi, fred, ms, altseason] = await Promise.all([
       fetchCoinGeckoData(),
       fetchBinanceData(),
       fetchDefiLlamaData(),
       fetchFredData(),
-      fetchMarketStructure()
+      fetchMarketStructure(),
+      fetchAltseasonData()
     ]);
     
     if (cg) { setCgData(cg); setApiStatus(prev => ({ ...prev, coingecko: 'live' })); }
@@ -757,6 +890,8 @@ function App() {
     
     if (ms) { setMsData(ms); setApiStatus(prev => ({ ...prev, marketStructure: 'live' })); }
     else { setApiStatus(prev => ({ ...prev, marketStructure: 'error' })); }
+    
+    if (altseason) { setAltseasonData(altseason); }
     
     setLastUpdate(new Date());
     setLoading(false);
@@ -839,6 +974,15 @@ function App() {
     else if (defiData?.stablecoinSupply?.change < -3) score -= 8;
     else if (defiData?.stablecoinSupply?.change < -1) score -= 4;
     
+    // Altseason Index (dla altów)
+    if (altseasonData?.altseasonIndex > 70) score += 6;
+    else if (altseasonData?.altseasonIndex > 55) score += 3;
+    else if (altseasonData?.altseasonIndex < 30) score -= 4;
+    
+    // ETH/BTC Ratio
+    if (altseasonData?.ethBtcRatio > 0.05) score += 4;
+    else if (altseasonData?.ethBtcRatio < 0.035) score -= 4;
+    
     return Math.max(0, Math.min(100, Math.round(score)));
   };
   
@@ -874,6 +1018,16 @@ function App() {
       else if (cgData.fearGreed.value < 35) score += 4;
       else if (cgData.fearGreed.value > 85) score -= 8;
       else if (cgData.fearGreed.value > 70) score -= 4;
+    }
+    
+    // USDT/USDC flows (instytucjonalny kapitał)
+    if (altseasonData?.stablecoins) {
+      const totalChange = (altseasonData.stablecoins.usdt?.change7d || 0) + 
+                          (altseasonData.stablecoins.usdc?.change7d || 0);
+      if (totalChange > 2) score += 6;
+      else if (totalChange > 0.5) score += 3;
+      else if (totalChange < -2) score -= 6;
+      else if (totalChange < -0.5) score -= 3;
     }
     
     return Math.max(0, Math.min(100, Math.round(score)));
@@ -1319,6 +1473,236 @@ function App() {
                     <span style={{ color: t.negative, fontWeight: '600' }}>{coin.change24h}%</span>
                   </div>
                 ))}
+              </div>
+            </Card>
+
+            {/* ============ ALTSEASON INDICATORS ============ */}
+            <Card theme={theme}>
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                marginBottom: '12px'
+              }}>
+                <div style={{ fontSize: '13px', fontWeight: '600' }}>
+                  🎨 Altseason Indicators
+                </div>
+                <ApiStatusBadge status={altseasonData ? 'live' : 'loading'} label="CoinGecko" theme={theme} />
+              </div>
+              
+              <div style={{ display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(2, 1fr)' }}>
+                {/* Altseason Index */}
+                <div style={{
+                  padding: '12px',
+                  background: altseasonData?.altseasonIndex > 60 ? `${t.positive}15` : 
+                             altseasonData?.altseasonIndex < 40 ? `${t.negative}15` : `${t.warning}15`,
+                  borderRadius: '10px',
+                  textAlign: 'center',
+                  border: `1px solid ${altseasonData?.altseasonIndex > 60 ? t.positive : 
+                          altseasonData?.altseasonIndex < 40 ? t.negative : t.warning}30`
+                }}>
+                  <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>
+                    🌊 Altseason Index
+                  </div>
+                  <div style={{ 
+                    fontSize: '28px', 
+                    fontWeight: '700',
+                    color: altseasonData?.altseasonIndex > 60 ? t.positive : 
+                           altseasonData?.altseasonIndex < 40 ? t.negative : t.warning
+                  }}>
+                    {altseasonData?.altseasonIndex || '---'}
+                  </div>
+                  <div style={{ fontSize: '9px', color: t.textSecondary, marginTop: '2px' }}>
+                    {altseasonData?.altseasonIndex > 75 ? '🚀 Altseason!' : 
+                     altseasonData?.altseasonIndex > 60 ? '📈 Alty rosną' :
+                     altseasonData?.altseasonIndex < 25 ? '₿ BTC Season' :
+                     altseasonData?.altseasonIndex < 40 ? '📉 BTC dominuje' : '⚖️ Neutralny'}
+                  </div>
+                </div>
+                
+                {/* ETH/BTC Ratio */}
+                <div style={{
+                  padding: '12px',
+                  background: altseasonData?.ethBtcRatio > 0.05 ? `${t.positive}15` : 
+                             altseasonData?.ethBtcRatio < 0.035 ? `${t.negative}15` : `${t.warning}15`,
+                  borderRadius: '10px',
+                  textAlign: 'center',
+                  border: `1px solid ${altseasonData?.ethBtcRatio > 0.05 ? t.positive : 
+                          altseasonData?.ethBtcRatio < 0.035 ? t.negative : t.warning}30`
+                }}>
+                  <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>
+                    ⚡ ETH/BTC Ratio
+                  </div>
+                  <div style={{ 
+                    fontSize: '24px', 
+                    fontWeight: '700',
+                    color: altseasonData?.ethBtcRatio > 0.05 ? t.positive : 
+                           altseasonData?.ethBtcRatio < 0.035 ? t.negative : t.warning
+                  }}>
+                    {altseasonData?.ethBtcRatio || '---'}
+                  </div>
+                  <div style={{ fontSize: '9px', color: t.textSecondary, marginTop: '2px' }}>
+                    {altseasonData?.ethBtcRatio > 0.055 ? '🟢 ETH bardzo silny' :
+                     altseasonData?.ethBtcRatio > 0.045 ? '📈 ETH outperformuje' :
+                     altseasonData?.ethBtcRatio < 0.03 ? '🔴 BTC dominuje' : '⚖️ Neutralny'}
+                  </div>
+                </div>
+                
+                {/* Total2 */}
+                <div style={{
+                  padding: '12px',
+                  background: t.cardBg,
+                  borderRadius: '10px',
+                  textAlign: 'center',
+                  border: `1px solid ${t.border}`
+                }}>
+                  <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>
+                    📊 Total2 (bez BTC)
+                  </div>
+                  <div style={{ fontSize: '22px', fontWeight: '700' }}>
+                    ${altseasonData?.total2 || '---'}T
+                  </div>
+                  <div style={{ fontSize: '9px', color: t.textSecondary, marginTop: '2px' }}>
+                    Market cap altów
+                  </div>
+                </div>
+                
+                {/* BTC Dominance */}
+                <div style={{
+                  padding: '12px',
+                  background: altseasonData?.btcDominance < 45 ? `${t.positive}15` : 
+                             altseasonData?.btcDominance > 55 ? `${t.negative}15` : `${t.warning}15`,
+                  borderRadius: '10px',
+                  textAlign: 'center',
+                  border: `1px solid ${altseasonData?.btcDominance < 45 ? t.positive : 
+                          altseasonData?.btcDominance > 55 ? t.negative : t.warning}30`
+                }}>
+                  <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>
+                    👑 BTC Dominance
+                  </div>
+                  <div style={{ 
+                    fontSize: '22px', 
+                    fontWeight: '700',
+                    color: altseasonData?.btcDominance < 45 ? t.positive : 
+                           altseasonData?.btcDominance > 55 ? t.negative : t.warning
+                  }}>
+                    {altseasonData?.btcDominance || '---'}%
+                  </div>
+                  <div style={{ fontSize: '9px', color: t.textSecondary, marginTop: '2px' }}>
+                    {altseasonData?.btcDominance < 45 ? '🎨 Altseason zone' :
+                     altseasonData?.btcDominance > 55 ? '₿ BTC season' : '⚖️ Neutralny'}
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            {/* ============ STABLECOIN FLOWS ============ */}
+            <Card theme={theme}>
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                marginBottom: '12px'
+              }}>
+                <div style={{ fontSize: '13px', fontWeight: '600' }}>
+                  💵 Stablecoin Flows
+                </div>
+                <ApiStatusBadge status={altseasonData?.stablecoins ? 'live' : 'loading'} label="DefiLlama" theme={theme} />
+              </div>
+              
+              <div style={{ display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(2, 1fr)' }}>
+                {/* USDT */}
+                <div style={{
+                  padding: '12px',
+                  background: `${t.positive}10`,
+                  borderRadius: '10px',
+                  border: `1px solid ${t.positive}25`
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                    <span style={{ fontSize: '16px' }}>🟢</span>
+                    <span style={{ fontSize: '12px', fontWeight: '600' }}>USDT</span>
+                  </div>
+                  <div style={{ fontSize: '20px', fontWeight: '700' }}>
+                    ${altseasonData?.stablecoins?.usdt?.mcap || '---'}B
+                  </div>
+                  <div style={{ 
+                    fontSize: '11px', 
+                    color: (altseasonData?.stablecoins?.usdt?.change7d || 0) >= 0 ? t.positive : t.negative,
+                    marginTop: '4px'
+                  }}>
+                    {altseasonData?.stablecoins?.usdt?.change7d >= 0 ? '+' : ''}
+                    {altseasonData?.stablecoins?.usdt?.change7d?.toFixed(2) || '---'}% (7d)
+                  </div>
+                </div>
+                
+                {/* USDC */}
+                <div style={{
+                  padding: '12px',
+                  background: `${t.accent}10`,
+                  borderRadius: '10px',
+                  border: `1px solid ${t.accent}25`
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                    <span style={{ fontSize: '16px' }}>🔵</span>
+                    <span style={{ fontSize: '12px', fontWeight: '600' }}>USDC</span>
+                  </div>
+                  <div style={{ fontSize: '20px', fontWeight: '700' }}>
+                    ${altseasonData?.stablecoins?.usdc?.mcap || '---'}B
+                  </div>
+                  <div style={{ 
+                    fontSize: '11px', 
+                    color: (altseasonData?.stablecoins?.usdc?.change7d || 0) >= 0 ? t.positive : t.negative,
+                    marginTop: '4px'
+                  }}>
+                    {altseasonData?.stablecoins?.usdc?.change7d >= 0 ? '+' : ''}
+                    {altseasonData?.stablecoins?.usdc?.change7d?.toFixed(2) || '---'}% (7d)
+                  </div>
+                </div>
+              </div>
+              
+              {/* Total Stablecoins Summary */}
+              <div style={{
+                marginTop: '12px',
+                padding: '10px',
+                background: t.cardBg,
+                borderRadius: '8px',
+                border: `1px solid ${t.border}`,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <div>
+                  <div style={{ fontSize: '10px', color: t.textSecondary }}>Total USDT+USDC</div>
+                  <div style={{ fontSize: '16px', fontWeight: '700' }}>
+                    ${altseasonData?.stablecoins?.total || '---'}B
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '10px', color: t.textSecondary }}>USDT Dominance</div>
+                  <div style={{ fontSize: '16px', fontWeight: '700' }}>
+                    {altseasonData?.stablecoins?.usdtDominance || '---'}%
+                  </div>
+                </div>
+              </div>
+              
+              {/* Interpretation */}
+              <div style={{
+                marginTop: '10px',
+                padding: '8px 10px',
+                background: (altseasonData?.stablecoins?.usdt?.change7d || 0) > 0 && 
+                           (altseasonData?.stablecoins?.usdc?.change7d || 0) > 0 
+                           ? `${t.positive}12` : `${t.warning}12`,
+                borderRadius: '6px',
+                fontSize: '10px',
+                color: t.textSecondary
+              }}>
+                {(altseasonData?.stablecoins?.usdt?.change7d || 0) > 0 && 
+                 (altseasonData?.stablecoins?.usdc?.change7d || 0) > 0 
+                  ? '🟢 Kapitał napływa do stablecoinów - "suchy proch" gotowy na zakupy'
+                  : (altseasonData?.stablecoins?.usdt?.change7d || 0) < 0 && 
+                    (altseasonData?.stablecoins?.usdc?.change7d || 0) < 0
+                    ? '🔴 Kapitał odpływa ze stablecoinów - mniej paliwa dla wzrostów'
+                    : '🟡 Mieszany sygnał - obserwuj przepływy między USDT/USDC'}
               </div>
             </Card>
           </div>
