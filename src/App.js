@@ -409,11 +409,19 @@ const HelpModal = ({ helpKey, onClose, theme }) => {
 };
 
 // ============== CARD COMPONENT ==============
-const Card = ({ children, helpKey, onHelp, style, theme }) => {
+const Card = ({ children, helpKey, onHelp, style, theme, signalColor }) => {
   const t = theme === 'dark' ? { cardBg: '#0f172a', border: '#1e293b', helpBg: '#1e293b', helpColor: '#64748b' }
     : { cardBg: '#ffffff', border: '#e2e8f0', helpBg: '#f1f5f9', helpColor: '#64748b' };
   return (
-    <div style={{ position: 'relative', padding: '14px', background: t.cardBg, borderRadius: '12px', border: `1px solid ${t.border}`, ...style }}>
+    <div style={{ 
+      position: 'relative', 
+      padding: '14px', 
+      background: signalColor ? `${signalColor}08` : t.cardBg, 
+      borderRadius: '12px', 
+      border: `1px solid ${t.border}`,
+      borderLeft: signalColor ? `5px solid ${signalColor}` : `1px solid ${t.border}`,
+      ...style 
+    }}>
       {helpKey && (
         <button onClick={() => onHelp(helpKey)} style={{
           position: 'absolute', top: '8px', right: '8px', width: '22px', height: '22px',
@@ -878,7 +886,8 @@ function App() {
         {/* CRYPTO TAB */}
         {activeTab === 'crypto' && (
           <div style={{ display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))' }}>
-            <Card helpKey="btcPrice" onHelp={setHelpModal} theme={theme}>
+            <Card helpKey="btcPrice" onHelp={setHelpModal} theme={theme}
+              signalColor={(cgData?.btcPrice?.change || 0) >= 0 ? t.positive : t.negative}>
               <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>₿ Bitcoin</div>
               <div style={{ fontSize: '18px', fontWeight: '700' }}>${cgData?.btcPrice?.value?.toLocaleString() || '---'}</div>
               <span style={{ fontSize: '11px', color: (cgData?.btcPrice?.change || 0) >= 0 ? t.positive : t.negative }}>
@@ -886,7 +895,8 @@ function App() {
               </span>
             </Card>
 
-            <Card helpKey="ethPrice" onHelp={setHelpModal} theme={theme}>
+            <Card helpKey="ethPrice" onHelp={setHelpModal} theme={theme}
+              signalColor={(cgData?.ethPrice?.change || 0) >= 0 ? t.positive : t.negative}>
               <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>◆ Ethereum</div>
               <div style={{ fontSize: '18px', fontWeight: '700' }}>${cgData?.ethPrice?.value?.toLocaleString() || '---'}</div>
               <span style={{ fontSize: '11px', color: (cgData?.ethPrice?.change || 0) >= 0 ? t.positive : t.negative }}>
@@ -894,7 +904,8 @@ function App() {
               </span>
             </Card>
 
-            <Card helpKey="fearGreed" onHelp={setHelpModal} theme={theme}>
+            <Card helpKey="fearGreed" onHelp={setHelpModal} theme={theme}
+              signalColor={cgData?.fearGreed?.value <= 25 ? t.positive : cgData?.fearGreed?.value >= 75 ? t.negative : cgData?.fearGreed?.value <= 45 ? '#84cc16' : t.warning}>
               <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>😱 Fear & Greed</div>
               <div style={{ fontSize: '18px', fontWeight: '700', color: cgData?.fearGreed?.value > 60 ? t.warning : cgData?.fearGreed?.value < 40 ? t.positive : t.text }}>
                 {cgData?.fearGreed?.value || '---'}
@@ -902,12 +913,14 @@ function App() {
               <span style={{ fontSize: '10px', color: t.textSecondary }}>{cgData?.fearGreed?.label || '---'}</span>
             </Card>
 
-            <Card helpKey="btcDominance" onHelp={setHelpModal} theme={theme}>
+            <Card helpKey="btcDominance" onHelp={setHelpModal} theme={theme}
+              signalColor={(cgData?.btcDominance?.value || 50) < 45 ? t.positive : (cgData?.btcDominance?.value || 50) > 55 ? t.warning : '#64748b'}>
               <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>👑 BTC Dominance</div>
               <div style={{ fontSize: '18px', fontWeight: '700' }}>{cgData?.btcDominance?.value || '---'}%</div>
             </Card>
 
-            <Card theme={theme}>
+            <Card theme={theme}
+              signalColor={(cgData?.solPrice?.change || 0) >= 0 ? t.positive : t.negative}>
               <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>◎ Solana</div>
               <div style={{ fontSize: '18px', fontWeight: '700' }}>${cgData?.solPrice?.value || '---'}</div>
               <span style={{ fontSize: '11px', color: (cgData?.solPrice?.change || 0) >= 0 ? t.positive : t.negative }}>
@@ -925,7 +938,8 @@ function App() {
         {/* MACRO TAB */}
         {activeTab === 'macro' && (
           <div style={{ display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
-            <Card helpKey="m2Supply" onHelp={setHelpModal} theme={theme}>
+            <Card helpKey="m2Supply" onHelp={setHelpModal} theme={theme}
+              signalColor={fredData?.m2Supply?.trend === 'expanding' ? t.positive : t.negative}>
               <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>🏦 M2 Supply</div>
               <div style={{ fontSize: '18px', fontWeight: '700' }}>${fredData?.m2Supply?.value || '---'}T</div>
               <span style={{ fontSize: '11px', color: (fredData?.m2Supply?.change || 0) >= 0 ? t.positive : t.negative }}>
@@ -938,7 +952,8 @@ function App() {
               )}
             </Card>
 
-            <Card helpKey="dxy" onHelp={setHelpModal} theme={theme}>
+            <Card helpKey="dxy" onHelp={setHelpModal} theme={theme}
+              signalColor={mockData.dxy.change < 0 ? t.positive : t.negative}>
               <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>💲 DXY Index</div>
               <div style={{ fontSize: '18px', fontWeight: '700' }}>{mockData.dxy.value}</div>
               <span style={{ fontSize: '11px', color: mockData.dxy.change < 0 ? t.positive : t.negative }}>
@@ -962,7 +977,8 @@ function App() {
         {activeTab === 'defi' && (
           <div style={{ display: 'grid', gap: '10px' }}>
             <div style={{ display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))' }}>
-              <Card helpKey="tvl" onHelp={setHelpModal} theme={theme}>
+              <Card helpKey="tvl" onHelp={setHelpModal} theme={theme}
+                signalColor={(defiData?.tvl?.change || 0) >= 0 ? t.positive : t.negative}>
                 <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>🔒 Total TVL</div>
                 <div style={{ fontSize: '18px', fontWeight: '700' }}>${defiData?.tvl?.value || '---'}B</div>
                 <span style={{ fontSize: '11px', color: (defiData?.tvl?.change || 0) >= 0 ? t.positive : t.negative }}>
@@ -970,7 +986,8 @@ function App() {
                 </span>
               </Card>
 
-              <Card helpKey="stablecoinSupply" onHelp={setHelpModal} theme={theme}>
+              <Card helpKey="stablecoinSupply" onHelp={setHelpModal} theme={theme}
+                signalColor={(defiData?.stablecoinSupply?.change || 0) >= 0 ? t.positive : t.negative}>
                 <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>💵 Stablecoin</div>
                 <div style={{ fontSize: '18px', fontWeight: '700' }}>${defiData?.stablecoinSupply?.value || '---'}B</div>
                 <span style={{ fontSize: '11px', color: (defiData?.stablecoinSupply?.change || 0) >= 0 ? t.positive : t.negative }}>
@@ -1003,7 +1020,8 @@ function App() {
         {/* DERIVATIVES TAB */}
         {activeTab === 'derivatives' && (
           <div style={{ display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))' }}>
-            <Card helpKey="fundingRate" onHelp={setHelpModal} theme={theme}>
+            <Card helpKey="fundingRate" onHelp={setHelpModal} theme={theme}
+              signalColor={(binanceData?.fundingRate?.value || 0) < 0 ? t.positive : (binanceData?.fundingRate?.value || 0) > 0.05 ? t.negative : t.warning}>
               <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>💸 Funding Rate</div>
               <div style={{ fontSize: '18px', fontWeight: '700', color: (binanceData?.fundingRate?.value || 0) > 0.03 ? t.warning : t.text }}>
                 {binanceData?.fundingRate?.value?.toFixed(4) || '---'}%
@@ -1017,7 +1035,8 @@ function App() {
               <span style={{ fontSize: '9px', color: t.textSecondary }}>BTC Futures</span>
             </Card>
 
-            <Card helpKey="longShortRatio" onHelp={setHelpModal} theme={theme}>
+            <Card helpKey="longShortRatio" onHelp={setHelpModal} theme={theme}
+              signalColor={(binanceData?.longShortRatio?.value || 1) < 1 ? t.positive : (binanceData?.longShortRatio?.value || 1) > 1.8 ? t.negative : t.warning}>
               <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>⚖️ Long/Short</div>
               <div style={{ fontSize: '18px', fontWeight: '700' }}>{binanceData?.longShortRatio?.value || '---'}</div>
               <span style={{ fontSize: '9px', color: (binanceData?.longShortRatio?.value || 1) > 1.5 ? t.warning : t.textSecondary }}>
@@ -1025,7 +1044,8 @@ function App() {
               </span>
             </Card>
 
-            <Card theme={theme}>
+            <Card theme={theme}
+              signalColor={mockData.liquidations.long > mockData.liquidations.short ? t.negative : t.positive}>
               <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>💥 Liquidations 24h</div>
               <div style={{ fontSize: '18px', fontWeight: '700' }}>${mockData.liquidations.total}M</div>
               <div style={{ fontSize: '9px', marginTop: '2px' }}>
