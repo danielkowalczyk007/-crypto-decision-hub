@@ -25,220 +25,432 @@ const chartData = [
   { name: 'Cze', m2: 21.3, btc: 69000, dxy: 105.2 },
   { name: 'Lip', m2: 21.1, btc: 58000, dxy: 104.5 },
   { name: 'Sie', m2: 21.4, btc: 61000, dxy: 103.2 },
-  { name: 'Wrz', m2: 21.5, btc: 94000, dxy: 103.4 },
+  { name: 'Wrz', m2: 21.3, btc: 65000, dxy: 102.8 },
+  { name: 'Paź', m2: 21.4, btc: 72000, dxy: 103.1 },
+  { name: 'Lis', m2: 21.5, btc: 89000, dxy: 103.4 },
+  { name: 'Gru', m2: 21.5, btc: 94250, dxy: 103.42 },
 ];
 
-const MetricCard = ({ title, value, change, suffix = '', icon }) => (
-  <div style={styles.card}>
-    <div style={styles.cardHeader}>
-      <span style={styles.cardIcon}>{icon}</span>
-      <span style={styles.cardTitle}>{title}</span>
-    </div>
-    <div style={styles.cardValue}>{value}{suffix}</div>
-    {change !== undefined && (
-      <div style={{...styles.cardChange, color: change >= 0 ? '#10b981' : '#ef4444'}}>
-        {change >= 0 ? '↑' : '↓'} {Math.abs(change)}%
-      </div>
-    )}
-  </div>
-);
-
-const SignalIndicator = ({ signal, label }) => {
-  const colors = { bullish: '#10b981', bearish: '#ef4444', neutral: '#f59e0b' };
-  return (
-    <div style={styles.signal}>
-      <div style={{...styles.signalDot, backgroundColor: colors[signal]}} />
-      <span>{label}</span>
-    </div>
-  );
+const styles = {
+  app: {
+    minHeight: '100vh',
+    background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+    color: '#fff',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+  },
+  container: {
+    maxWidth: '1400px',
+    margin: '0 auto',
+    padding: '20px',
+  },
+  header: {
+    textAlign: 'center',
+    marginBottom: '30px',
+    padding: '20px',
+    background: 'rgba(255,255,255,0.05)',
+    borderRadius: '16px',
+    backdropFilter: 'blur(10px)',
+  },
+  title: {
+    fontSize: '2.5rem',
+    fontWeight: '700',
+    background: 'linear-gradient(90deg, #00d4ff, #7b2ff7)',
+    WebkitBackgroundClip: 'text',
+    WebkitTextFillColor: 'transparent',
+    marginBottom: '10px',
+  },
+  subtitle: {
+    color: '#888',
+    fontSize: '1rem',
+  },
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+    gap: '20px',
+    marginBottom: '30px',
+  },
+  card: {
+    background: 'rgba(255,255,255,0.08)',
+    borderRadius: '16px',
+    padding: '20px',
+    backdropFilter: 'blur(10px)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    transition: 'transform 0.3s, box-shadow 0.3s',
+  },
+  cardTitle: {
+    fontSize: '0.85rem',
+    color: '#888',
+    textTransform: 'uppercase',
+    letterSpacing: '1px',
+    marginBottom: '10px',
+  },
+  cardValue: {
+    fontSize: '2rem',
+    fontWeight: '700',
+    marginBottom: '5px',
+  },
+  cardChange: {
+    fontSize: '0.9rem',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '5px',
+  },
+  positive: { color: '#00ff88' },
+  negative: { color: '#ff4757' },
+  neutral: { color: '#ffa502' },
+  signalBox: {
+    background: 'rgba(255,255,255,0.1)',
+    borderRadius: '12px',
+    padding: '15px',
+    marginTop: '15px',
+  },
+  signalTitle: {
+    fontSize: '1.2rem',
+    fontWeight: '600',
+    marginBottom: '10px',
+  },
+  signalIndicator: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    padding: '10px',
+    borderRadius: '8px',
+    marginBottom: '8px',
+  },
+  dot: {
+    width: '12px',
+    height: '12px',
+    borderRadius: '50%',
+  },
+  chartContainer: {
+    background: 'rgba(255,255,255,0.08)',
+    borderRadius: '16px',
+    padding: '20px',
+    marginBottom: '30px',
+  },
+  tabs: {
+    display: 'flex',
+    gap: '10px',
+    marginBottom: '20px',
+    flexWrap: 'wrap',
+  },
+  tab: {
+    padding: '10px 20px',
+    borderRadius: '8px',
+    border: 'none',
+    cursor: 'pointer',
+    fontWeight: '600',
+    transition: 'all 0.3s',
+  },
+  tabActive: {
+    background: 'linear-gradient(90deg, #00d4ff, #7b2ff7)',
+    color: '#fff',
+  },
+  tabInactive: {
+    background: 'rgba(255,255,255,0.1)',
+    color: '#888',
+  },
+  decisionPanel: {
+    background: 'linear-gradient(135deg, rgba(0,212,255,0.2), rgba(123,47,247,0.2))',
+    borderRadius: '16px',
+    padding: '25px',
+    textAlign: 'center',
+    border: '2px solid rgba(0,212,255,0.3)',
+  },
+  decisionScore: {
+    fontSize: '4rem',
+    fontWeight: '800',
+    marginBottom: '10px',
+  },
+  decisionLabel: {
+    fontSize: '1.5rem',
+    fontWeight: '600',
+    marginBottom: '15px',
+  },
+  meter: {
+    height: '20px',
+    background: 'rgba(255,255,255,0.1)',
+    borderRadius: '10px',
+    overflow: 'hidden',
+    marginBottom: '15px',
+  },
+  meterFill: {
+    height: '100%',
+    borderRadius: '10px',
+    transition: 'width 1s ease-out',
+  },
+  footer: {
+    textAlign: 'center',
+    padding: '20px',
+    color: '#666',
+    fontSize: '0.85rem',
+  },
 };
 
-export default function CryptoDecisionHub() {
+function App() {
   const [data, setData] = useState(generateMockData());
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [decisionScore, setDecisionScore] = useState(72);
+  const [activeTab, setActiveTab] = useState('macro');
+  const [lastUpdate, setLastUpdate] = useState(new Date());
 
   useEffect(() => {
     const interval = setInterval(() => {
       setData(generateMockData());
-      setDecisionScore(Math.floor(Math.random() * 30) + 60);
-    }, 30000);
+      setLastUpdate(new Date());
+    }, 60000);
     return () => clearInterval(interval);
   }, []);
 
-  const calculateOverallSignal = () => {
-    let score = 0;
-    if (data.m2Supply.trend === 'up') score += 20;
-    if (data.dxy.trend === 'down') score += 15;
-    if (data.mvrvZScore.value < 3) score += 15;
-    if (data.sopr.value < 1) score += 20;
-    if (data.exchangeReserves.trend === 'outflow') score += 15;
-    if (data.etfFlows.daily > 0) score += 15;
-    return score;
+  const calculateDecisionScore = () => {
+    let score = 50;
+    if (data.m2Supply.trend === 'up') score += 10;
+    if (data.dxy.trend === 'down') score += 10;
+    if (data.mvrvZScore.value < 2) score += 10;
+    if (data.sopr.value < 1) score += 10;
+    if (data.exchangeReserves.trend === 'outflow') score += 5;
+    if (data.etfFlows.daily > 0) score += 5;
+    return Math.min(100, Math.max(0, score));
   };
 
-  const signal = calculateOverallSignal();
-  const signalType = signal >= 70 ? 'bullish' : signal >= 40 ? 'neutral' : 'bearish';
+  const score = calculateDecisionScore();
+  const getDecisionColor = () => {
+    if (score >= 70) return '#00ff88';
+    if (score >= 40) return '#ffa502';
+    return '#ff4757';
+  };
+  const getDecisionLabel = () => {
+    if (score >= 70) return 'BULLISH';
+    if (score >= 40) return 'NEUTRAL';
+    return 'BEARISH';
+  };
 
   return (
-    <div style={styles.container}>
-      <header style={styles.header}>
-        <h1 style={styles.title}>🎯 Crypto Decision Hub</h1>
-        <p style={styles.subtitle}>Agregator wskaźników dla świadomych decyzji</p>
-      </header>
+    <div style={styles.app}>
+      <div style={styles.container}>
+        <header style={styles.header}>
+          <h1 style={styles.title}>🚀 Crypto Decision Hub</h1>
+          <p style={styles.subtitle}>
+            Agregator wskaźników | Ostatnia aktualizacja: {lastUpdate.toLocaleTimeString('pl-PL')}
+          </p>
+        </header>
 
-      <nav style={styles.nav}>
-        {['dashboard', 'makro', 'onchain', 'automatyzacja'].map(tab => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            style={{...styles.navButton, ...(activeTab === tab ? styles.navButtonActive : {})}}
-          >
-            {tab.charAt(0).toUpperCase() + tab.slice(1)}
-          </button>
-        ))}
-      </nav>
-
-      <div style={styles.decisionPanel}>
-        <h2 style={styles.panelTitle}>🧠 Algorytm Decyzyjny</h2>
-        <div style={styles.scoreContainer}>
-          <div style={styles.scoreCircle}>
-            <span style={styles.scoreValue}>{signal}</span>
-            <span style={styles.scoreLabel}>/ 100</span>
+        {/* Decision Panel */}
+        <div style={styles.decisionPanel}>
+          <div style={{ ...styles.decisionScore, color: getDecisionColor() }}>{score}</div>
+          <div style={{ ...styles.decisionLabel, color: getDecisionColor() }}>{getDecisionLabel()}</div>
+          <div style={styles.meter}>
+            <div style={{
+              ...styles.meterFill,
+              width: `${score}%`,
+              background: `linear-gradient(90deg, #ff4757, #ffa502, #00ff88)`,
+            }} />
           </div>
-          <SignalIndicator signal={signalType} label={signalType === 'bullish' ? 'KUPUJ' : signalType === 'neutral' ? 'CZEKAJ' : 'SPRZEDAJ'} />
+          <p style={{ color: '#888' }}>Algorytm agreguje dane makro, on-chain i przepływy instytucjonalne</p>
         </div>
-        <div style={styles.factorsGrid}>
-          <div style={styles.factor}>M2 Supply {data.m2Supply.trend === 'up' ? '✅' : '❌'}</div>
-          <div style={styles.factor}>DXY Trend {data.dxy.trend === 'down' ? '✅' : '❌'}</div>
-          <div style={styles.factor}>MVRV Z-Score {data.mvrvZScore.value < 3 ? '✅' : '❌'}</div>
-          <div style={styles.factor}>SOPR {data.sopr.value < 1 ? '✅' : '❌'}</div>
-          <div style={styles.factor}>Exchange Flow {data.exchangeReserves.trend === 'outflow' ? '✅' : '❌'}</div>
-          <div style={styles.factor}>ETF Flows {data.etfFlows.daily > 0 ? '✅' : '❌'}</div>
+
+        {/* Tabs */}
+        <div style={{ ...styles.tabs, marginTop: '30px' }}>
+          {['macro', 'onchain', 'flows'].map(tab => (
+            <button
+              key={tab}
+              style={{ ...styles.tab, ...(activeTab === tab ? styles.tabActive : styles.tabInactive) }}
+              onClick={() => setActiveTab(tab)}
+            >
+              {tab === 'macro' && '📊 Makro'}
+              {tab === 'onchain' && '⛓️ On-Chain'}
+              {tab === 'flows' && '💰 Przepływy'}
+            </button>
+          ))}
         </div>
+
+        {/* Cards Grid */}
+        <div style={styles.grid}>
+          {activeTab === 'macro' && (
+            <>
+              <div style={styles.card}>
+                <div style={styles.cardTitle}>💵 M2 Money Supply (Global)</div>
+                <div style={styles.cardValue}>${data.m2Supply.value}T</div>
+                <div style={{ ...styles.cardChange, ...styles.positive }}>
+                  ▲ {data.m2Supply.change}% YoY
+                </div>
+                <div style={styles.signalBox}>
+                  <div style={{ ...styles.signalIndicator, background: 'rgba(0,255,136,0.2)' }}>
+                    <div style={{ ...styles.dot, background: '#00ff88' }} />
+                    <span>Ekspansja płynności - pozytywne dla ryzyka</span>
+                  </div>
+                </div>
+              </div>
+
+              <div style={styles.card}>
+                <div style={styles.cardTitle}>💲 DXY (Dollar Index)</div>
+                <div style={styles.cardValue}>{data.dxy.value}</div>
+                <div style={{ ...styles.cardChange, ...styles.positive }}>
+                  ▼ {Math.abs(data.dxy.change)}% (spadek = pozytywne)
+                </div>
+                <div style={styles.signalBox}>
+                  <div style={{ ...styles.signalIndicator, background: 'rgba(0,255,136,0.2)' }}>
+                    <div style={{ ...styles.dot, background: '#00ff88' }} />
+                    <span>Słabszy dolar sprzyja aktywom ryzykownym</span>
+                  </div>
+                </div>
+              </div>
+
+              <div style={styles.card}>
+                <div style={styles.cardTitle}>🏛️ FedWatch - Stopy %</div>
+                <div style={styles.cardValue}>{data.fedWatch.probability}%</div>
+                <div style={{ ...styles.cardChange, ...styles.neutral }}>
+                  Prawdop. cięcia: {data.fedWatch.nextCut}
+                </div>
+                <div style={styles.signalBox}>
+                  <div style={{ ...styles.signalIndicator, background: 'rgba(255,165,2,0.2)' }}>
+                    <div style={{ ...styles.dot, background: '#ffa502' }} />
+                    <span>Rynek oczekuje luzowania polityki</span>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {activeTab === 'onchain' && (
+            <>
+              <div style={styles.card}>
+                <div style={styles.cardTitle}>📈 MVRV Z-Score</div>
+                <div style={styles.cardValue}>{data.mvrvZScore.value}</div>
+                <div style={{ ...styles.cardChange, ...styles.positive }}>
+                  Strefa: {data.mvrvZScore.zone}
+                </div>
+                <div style={styles.signalBox}>
+                  <div style={{ ...styles.signalIndicator, background: 'rgba(0,255,136,0.2)' }}>
+                    <div style={{ ...styles.dot, background: '#00ff88' }} />
+                    <span>&lt;2 = niedowartościowanie, &gt;7 = szczyt</span>
+                  </div>
+                </div>
+              </div>
+
+              <div style={styles.card}>
+                <div style={styles.cardTitle}>💎 SOPR</div>
+                <div style={styles.cardValue}>{data.sopr.value}</div>
+                <div style={{ ...styles.cardChange, ...styles.positive }}>
+                  Sygnał: {data.sopr.signal}
+                </div>
+                <div style={styles.signalBox}>
+                  <div style={{ ...styles.signalIndicator, background: 'rgba(0,255,136,0.2)' }}>
+                    <div style={{ ...styles.dot, background: '#00ff88' }} />
+                    <span>&lt;1 = akumulacja (sprzedaż ze stratą)</span>
+                  </div>
+                </div>
+              </div>
+
+              <div style={styles.card}>
+                <div style={styles.cardTitle}>🏦 Rezerwy giełd</div>
+                <div style={styles.cardValue}>{data.exchangeReserves.btc}M BTC</div>
+                <div style={{ ...styles.cardChange, ...styles.positive }}>
+                  Trend: {data.exchangeReserves.trend}
+                </div>
+                <div style={styles.signalBox}>
+                  <div style={{ ...styles.signalIndicator, background: 'rgba(0,255,136,0.2)' }}>
+                    <div style={{ ...styles.dot, background: '#00ff88' }} />
+                    <span>Outflow = mniej BTC na giełdach = bullish</span>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {activeTab === 'flows' && (
+            <>
+              <div style={styles.card}>
+                <div style={styles.cardTitle}>📊 ETF Flows (BTC)</div>
+                <div style={styles.cardValue}>+${data.etfFlows.daily}M</div>
+                <div style={{ ...styles.cardChange, ...styles.positive }}>
+                  Tygodniowo: +${data.etfFlows.weekly}M
+                </div>
+                <div style={styles.signalBox}>
+                  <div style={{ ...styles.signalIndicator, background: 'rgba(0,255,136,0.2)' }}>
+                    <div style={{ ...styles.dot, background: '#00ff88' }} />
+                    <span>Pozytywne napływy do ETF-ów</span>
+                  </div>
+                </div>
+              </div>
+
+              <div style={styles.card}>
+                <div style={styles.cardTitle}>🏢 Instytucjonalny BTC</div>
+                <div style={styles.cardValue}>{data.institutionalBtc.percentage}%</div>
+                <div style={{ ...styles.cardChange, ...styles.positive }}>
+                  Supply w rękach instytucji
+                </div>
+                <div style={styles.signalBox}>
+                  <div style={{ ...styles.signalIndicator, background: 'rgba(0,255,136,0.2)' }}>
+                    <div style={{ ...styles.dot, background: '#00ff88' }} />
+                    <span>Rosnąca adopcja instytucjonalna</span>
+                  </div>
+                </div>
+              </div>
+
+              <div style={styles.card}>
+                <div style={styles.cardTitle}>💰 Stablecoin Supply</div>
+                <div style={styles.cardValue}>${data.stablecoinSupply.value}B</div>
+                <div style={{ ...styles.cardChange, ...styles.positive }}>
+                  ▲ {data.stablecoinSupply.change}% (30d)
+                </div>
+                <div style={styles.signalBox}>
+                  <div style={{ ...styles.signalIndicator, background: 'rgba(0,255,136,0.2)' }}>
+                    <div style={{ ...styles.dot, background: '#00ff88' }} />
+                    <span>Więcej "amunicji" na rynku</span>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Chart */}
+        <div style={styles.chartContainer}>
+          <h3 style={{ marginBottom: '20px' }}>📈 BTC vs M2 Supply vs DXY (korelacja)</h3>
+          <ResponsiveContainer width="100%" height={300}>
+            <AreaChart data={chartData}>
+              <XAxis dataKey="name" stroke="#666" />
+              <YAxis yAxisId="btc" orientation="left" stroke="#00d4ff" />
+              <YAxis yAxisId="m2" orientation="right" stroke="#7b2ff7" />
+              <Tooltip
+                contentStyle={{ background: '#1a1a2e', border: '1px solid #333', borderRadius: '8px' }}
+              />
+              <Area yAxisId="btc" type="monotone" dataKey="btc" stroke="#00d4ff" fill="rgba(0,212,255,0.3)" name="BTC ($)" />
+              <Line yAxisId="m2" type="monotone" dataKey="m2" stroke="#7b2ff7" strokeWidth={2} dot={false} name="M2 ($T)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Price Cards */}
+        <div style={styles.grid}>
+          <div style={styles.card}>
+            <div style={styles.cardTitle}>₿ Bitcoin</div>
+            <div style={styles.cardValue}>${data.btcPrice.value.toLocaleString()}</div>
+            <div style={{ ...styles.cardChange, ...styles.positive }}>
+              ▲ {data.btcPrice.change}% (24h) | ATH: ${data.btcPrice.ath.toLocaleString()}
+            </div>
+          </div>
+          <div style={styles.card}>
+            <div style={styles.cardTitle}>Ξ Ethereum</div>
+            <div style={styles.cardValue}>${data.ethPrice.value.toLocaleString()}</div>
+            <div style={{ ...styles.cardChange, ...styles.positive }}>
+              ▲ {data.ethPrice.change}% (24h)
+            </div>
+          </div>
+          <div style={styles.card}>
+            <div style={styles.cardTitle}>🔒 Total TVL (DeFi)</div>
+            <div style={styles.cardValue}>${data.tvl.value}B</div>
+            <div style={{ ...styles.cardChange, ...styles.positive }}>
+              ▲ {data.tvl.change}% (30d)
+            </div>
+          </div>
+        </div>
+
+        <footer style={styles.footer}>
+          <p>⚠️ To nie jest porada inwestycyjna. Zawsze przeprowadzaj własną analizę (DYOR).</p>
+        </footer>
       </div>
-
-      {activeTab === 'dashboard' && (
-        <div style={styles.section}>
-          <h2 style={styles.sectionTitle}>📊 Przegląd Rynku</h2>
-          <div style={styles.grid}>
-            <MetricCard title="Bitcoin" value={`$${data.btcPrice.value.toLocaleString()}`} change={data.btcPrice.change} icon="₿" />
-            <MetricCard title="Ethereum" value={`$${data.ethPrice.value.toLocaleString()}`} change={data.ethPrice.change} icon="Ξ" />
-            <MetricCard title="Total TVL" value={`$${data.tvl.value}B`} change={data.tvl.change} icon="🔒" />
-            <MetricCard title="Stablecoin Supply" value={`$${data.stablecoinSupply.value}B`} change={data.stablecoinSupply.change} icon="💵" />
-          </div>
-          <div style={styles.chartContainer}>
-            <h3 style={styles.chartTitle}>BTC vs M2 Supply (korelacja)</h3>
-            <ResponsiveContainer width="100%" height={200}>
-              <AreaChart data={chartData}>
-                <XAxis dataKey="name" stroke="#666" />
-                <YAxis yAxisId="left" stroke="#f7931a" />
-                <YAxis yAxisId="right" orientation="right" stroke="#3b82f6" />
-                <Tooltip />
-                <Area yAxisId="left" type="monotone" dataKey="btc" stroke="#f7931a" fill="#f7931a33" />
-                <Line yAxisId="right" type="monotone" dataKey="m2" stroke="#3b82f6" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'makro' && (
-        <div style={styles.section}>
-          <h2 style={styles.sectionTitle}>🌍 Wskaźniki Makro</h2>
-          <div style={styles.grid}>
-            <MetricCard title="M2 Supply (Global)" value={`$${data.m2Supply.value}T`} change={data.m2Supply.change} icon="💰" />
-            <MetricCard title="DXY Index" value={data.dxy.value} change={data.dxy.change} icon="💲" />
-            <MetricCard title="Fed Rate Cut" value={`${data.fedWatch.probability}%`} suffix=" prob." icon="🏦" />
-            <MetricCard title="ETF Daily Flow" value={`$${data.etfFlows.daily}M`} icon="📈" />
-          </div>
-          <div style={styles.infoBox}>
-            <h4>📌 Interpretacja</h4>
-            <p><strong>M2 ↑ + DXY ↓</strong> = Idealne warunki dla BTC (więcej płynności, słabszy dolar)</p>
-            <p><strong>Fed pivot</strong> = Historycznie poprzedza rally 3-6 miesięcy</p>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'onchain' && (
-        <div style={styles.section}>
-          <h2 style={styles.sectionTitle}>⛓️ Metryki On-Chain</h2>
-          <div style={styles.grid}>
-            <MetricCard title="MVRV Z-Score" value={data.mvrvZScore.value} icon="📉" />
-            <MetricCard title="SOPR" value={data.sopr.value} icon="💎" />
-            <MetricCard title="Exchange BTC" value={`${data.exchangeReserves.btc}M`} icon="🏪" />
-            <MetricCard title="Institutional %" value={`${data.institutionalBtc.percentage}%`} icon="🏛️" />
-          </div>
-          <div style={styles.signalGrid}>
-            <SignalIndicator signal={data.mvrvZScore.value < 2 ? 'bullish' : data.mvrvZScore.value < 5 ? 'neutral' : 'bearish'} label={`MVRV: ${data.mvrvZScore.zone}`} />
-            <SignalIndicator signal={data.sopr.value < 1 ? 'bullish' : 'neutral'} label={`SOPR: ${data.sopr.signal}`} />
-            <SignalIndicator signal={data.exchangeReserves.trend === 'outflow' ? 'bullish' : 'bearish'} label={`Exchanges: ${data.exchangeReserves.trend}`} />
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'automatyzacja' && (
-        <div style={styles.section}>
-          <h2 style={styles.sectionTitle}>🤖 System Automatyzacji</h2>
-          <div style={styles.automationCard}>
-            <h3>Alert DCA</h3>
-            <p>Kupuj gdy: MVRV &lt; 1.5 AND SOPR &lt; 0.95</p>
-            <div style={styles.statusBadge}>Status: Aktywny ✅</div>
-          </div>
-          <div style={styles.automationCard}>
-            <h3>Alert Take Profit</h3>
-            <p>Sprzedaj gdy: MVRV &gt; 6 OR RSI &gt; 85</p>
-            <div style={styles.statusBadge}>Status: Oczekuje 🟡</div>
-          </div>
-          <div style={styles.automationCard}>
-            <h3>Rebalancing Portfolio</h3>
-            <p>Sprawdzaj alokację co tydzień (70% BTC / 20% ETH / 10% Stable)</p>
-            <div style={styles.statusBadge}>Status: Harmonogram ⏰</div>
-          </div>
-        </div>
-      )}
-
-      <footer style={styles.footer}>
-        <p>Dane odświeżane co 30s | Ostatnia aktualizacja: {new Date().toLocaleTimeString('pl-PL')}</p>
-        <p style={styles.disclaimer}>⚠️ To nie jest porada inwestycyjna. Zawsze przeprowadzaj własną analizę (DYOR).</p>
-      </footer>
     </div>
   );
 }
 
-const styles = {
-  container: { fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif', backgroundColor: '#0f0f1a', color: '#fff', minHeight: '100vh', padding: '20px' },
-  header: { textAlign: 'center', marginBottom: '30px' },
-  title: { fontSize: '28px', margin: '0', background: 'linear-gradient(90deg, #f7931a, #3b82f6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' },
-  subtitle: { color: '#888', marginTop: '8px' },
-  nav: { display: 'flex', justifyContent: 'center', gap: '10px', marginBottom: '30px', flexWrap: 'wrap' },
-  navButton: { padding: '10px 20px', backgroundColor: '#1a1a2e', border: 'none', borderRadius: '8px', color: '#888', cursor: 'pointer', transition: 'all 0.2s' },
-  navButtonActive: { backgroundColor: '#3b82f6', color: '#fff' },
-  decisionPanel: { backgroundColor: '#1a1a2e', borderRadius: '16px', padding: '24px', marginBottom: '30px', border: '1px solid #333' },
-  panelTitle: { margin: '0 0 20px', fontSize: '20px' },
-  scoreContainer: { display: 'flex', alignItems: 'center', gap: '30px', marginBottom: '20px' },
-  scoreCircle: { width: '100px', height: '100px', borderRadius: '50%', backgroundColor: '#0f0f1a', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', border: '4px solid #3b82f6' },
-  scoreValue: { fontSize: '32px', fontWeight: 'bold' },
-  scoreLabel: { fontSize: '12px', color: '#888' },
-  factorsGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px' },
-  factor: { padding: '10px', backgroundColor: '#0f0f1a', borderRadius: '8px', textAlign: 'center', fontSize: '14px' },
-  section: { marginBottom: '30px' },
-  sectionTitle: { fontSize: '20px', marginBottom: '20px' },
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '20px' },
-  card: { backgroundColor: '#1a1a2e', borderRadius: '12px', padding: '20px', border: '1px solid #333' },
-  cardHeader: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' },
-  cardIcon: { fontSize: '20px' },
-  cardTitle: { color: '#888', fontSize: '14px' },
-  cardValue: { fontSize: '24px', fontWeight: 'bold' },
-  cardChange: { fontSize: '14px', marginTop: '5px' },
-  chartContainer: { backgroundColor: '#1a1a2e', borderRadius: '12px', padding: '20px', border: '1px solid #333' },
-  chartTitle: { margin: '0 0 15px', fontSize: '16px', color: '#888' },
-  signal: { display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 15px', backgroundColor: '#1a1a2e', borderRadius: '8px' },
-  signalDot: { width: '12px', height: '12px', borderRadius: '50%' },
-  signalGrid: { display: 'flex', gap: '15px', flexWrap: 'wrap', marginTop: '20px' },
-  infoBox: { backgroundColor: '#1a1a2e', borderRadius: '12px', padding: '20px', border: '1px solid #333' },
-  automationCard: { backgroundColor: '#1a1a2e', borderRadius: '12px', padding: '20px', marginBottom: '15px', border: '1px solid #333' },
-  statusBadge: { display: 'inline-block', padding: '5px 10px', backgroundColor: '#0f0f1a', borderRadius: '6px', marginTop: '10px', fontSize: '14px' },
-  footer: { textAlign: 'center', color: '#666', fontSize: '12px', marginTop: '40px' },
-  disclaimer: { color: '#f59e0b', marginTop: '10px' },
-};
+export default App;
