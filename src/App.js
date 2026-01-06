@@ -1,344 +1,385 @@
-import React, { useState, useEffect } from 'react';
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, AreaChart, Area, Tooltip, BarChart, Bar } from 'recharts';
+import React, { useState, useEffect, useCallback } from 'react';
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, AreaChart, Area, Tooltip, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 
-const generateMockData = () => ({
-  // MACRO
-  m2Supply: { value: 21.5, trend: 'up', change: 2.3 },
-  dxy: { value: 103.42, trend: 'down', change: -1.8 },
-  fedWatch: { nextCut: '2025-03', probability: 68 },
-  // PRICES
-  btcPrice: { value: 94250, change: 3.2, ath: 109000 },
-  ethPrice: { value: 3420, change: 2.8 },
-  // ON-CHAIN
-  stablecoinSupply: { value: 178.5, change: 5.2 },
-  tvl: { value: 89.4, change: 12.3 },
-  mvrvZScore: { value: 1.8, zone: 'neutral' },
-  sopr: { value: 0.98, signal: 'accumulation' },
-  exchangeReserves: { btc: 2.1, eth: 17.8, trend: 'outflow' },
-  // FLOWS
-  etfFlows: { daily: 245, weekly: 1820 },
-  institutionalBtc: { percentage: 20.4 },
-  // DAY TRADING - NEW
-  rsi: { value: 62, signal: 'neutral' },
-  fundingRate: { btc: 0.012, eth: 0.008, signal: 'bullish' },
-  openInterest: { value: 18.2, change: 5.4 },
-  liquidations: { 
-    last24h: 124, 
-    longPercent: 38, 
-    shortPercent: 62,
-    largest: 2.4
-  },
-  fearGreed: { value: 71, label: 'Greed' },
-  volume24h: { btc: 42.3, total: 98.7, change: 12.1 },
-  btcDominance: { value: 54.2, change: -0.8 },
-  volatility: { value: 3.2, label: 'Moderate' },
-  orderFlow: { buyPressure: 58, sellPressure: 42 },
-});
-
-const chartData = [
-  { name: 'Sty', m2: 20.1, btc: 42000, dxy: 104 },
-  { name: 'Lut', m2: 20.3, btc: 52000, dxy: 103.5 },
-  { name: 'Mar', m2: 20.8, btc: 68000, dxy: 103.8 },
-  { name: 'Kwi', m2: 21.0, btc: 64000, dxy: 104.2 },
-  { name: 'Maj', m2: 21.2, btc: 71000, dxy: 104.8 },
-  { name: 'Cze', m2: 21.3, btc: 69000, dxy: 105.2 },
-  { name: 'Lip', m2: 21.1, btc: 58000, dxy: 104.5 },
-  { name: 'Sie', m2: 21.4, btc: 61000, dxy: 103.2 },
-  { name: 'Wrz', m2: 21.3, btc: 65000, dxy: 102.8 },
-  { name: 'Paź', m2: 21.4, btc: 72000, dxy: 103.1 },
-  { name: 'Lis', m2: 21.5, btc: 89000, dxy: 103.4 },
-  { name: 'Gru', m2: 21.5, btc: 94250, dxy: 103.42 },
-];
-
-const rsiData = [
-  { time: '00:00', rsi: 45 },
-  { time: '04:00', rsi: 52 },
-  { time: '08:00', rsi: 58 },
-  { time: '12:00', rsi: 71 },
-  { time: '16:00', rsi: 65 },
-  { time: '20:00', rsi: 62 },
-];
-
-const liquidationData = [
-  { time: '00:00', longs: 12, shorts: 8 },
-  { time: '04:00', longs: 8, shorts: 15 },
-  { time: '08:00', longs: 5, shorts: 22 },
-  { time: '12:00', longs: 18, shorts: 6 },
-  { time: '16:00', longs: 10, shorts: 14 },
-  { time: '20:00', longs: 7, shorts: 11 },
-];
-
-const styles = {
-  app: {
-    minHeight: '100vh',
-    background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
-    color: '#fff',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-  },
-  container: {
-    maxWidth: '1400px',
-    margin: '0 auto',
-    padding: '20px',
-  },
-  header: {
-    textAlign: 'center',
-    marginBottom: '30px',
-    padding: '20px',
-    background: 'rgba(255,255,255,0.05)',
-    borderRadius: '16px',
-    backdropFilter: 'blur(10px)',
-  },
-  title: {
-    fontSize: '2.5rem',
-    fontWeight: '700',
-    background: 'linear-gradient(90deg, #00d4ff, #7b2ff7)',
-    WebkitBackgroundClip: 'text',
-    WebkitTextFillColor: 'transparent',
-    marginBottom: '10px',
-  },
-  subtitle: {
-    color: '#888',
-    fontSize: '1rem',
-  },
-  grid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-    gap: '20px',
-    marginBottom: '30px',
-  },
-  card: {
-    background: 'rgba(255,255,255,0.08)',
-    borderRadius: '16px',
-    padding: '20px',
-    backdropFilter: 'blur(10px)',
-    border: '1px solid rgba(255,255,255,0.1)',
-    transition: 'transform 0.3s, box-shadow 0.3s',
-  },
-  cardTitle: {
-    fontSize: '0.85rem',
-    color: '#888',
-    textTransform: 'uppercase',
-    letterSpacing: '1px',
-    marginBottom: '10px',
-  },
-  cardValue: {
-    fontSize: '2rem',
-    fontWeight: '700',
-    marginBottom: '5px',
-  },
-  cardChange: {
-    fontSize: '0.9rem',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '5px',
-  },
-  positive: { color: '#00ff88' },
-  negative: { color: '#ff4757' },
-  neutral: { color: '#ffa502' },
-  signalBox: {
-    background: 'rgba(255,255,255,0.1)',
-    borderRadius: '12px',
-    padding: '15px',
-    marginTop: '15px',
-  },
-  signalIndicator: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    padding: '10px',
-    borderRadius: '8px',
-    marginBottom: '8px',
-  },
-  dot: {
-    width: '12px',
-    height: '12px',
-    borderRadius: '50%',
-  },
-  chartContainer: {
-    background: 'rgba(255,255,255,0.08)',
-    borderRadius: '16px',
-    padding: '20px',
-    marginBottom: '30px',
-  },
-  tabs: {
-    display: 'flex',
-    gap: '10px',
-    marginBottom: '20px',
-    flexWrap: 'wrap',
-  },
-  tab: {
-    padding: '10px 20px',
-    borderRadius: '8px',
-    border: 'none',
-    cursor: 'pointer',
-    fontWeight: '600',
-    transition: 'all 0.3s',
-  },
-  tabActive: {
-    background: 'linear-gradient(90deg, #00d4ff, #7b2ff7)',
-    color: '#fff',
-  },
-  tabInactive: {
-    background: 'rgba(255,255,255,0.1)',
-    color: '#888',
-  },
-  decisionPanel: {
-    background: 'linear-gradient(135deg, rgba(0,212,255,0.2), rgba(123,47,247,0.2))',
-    borderRadius: '16px',
-    padding: '25px',
-    textAlign: 'center',
-    border: '2px solid rgba(0,212,255,0.3)',
-  },
-  decisionScore: {
-    fontSize: '4rem',
-    fontWeight: '800',
-    marginBottom: '10px',
-  },
-  decisionLabel: {
-    fontSize: '1.5rem',
-    fontWeight: '600',
-    marginBottom: '15px',
-  },
-  meter: {
-    height: '20px',
-    background: 'rgba(255,255,255,0.1)',
-    borderRadius: '10px',
-    overflow: 'hidden',
-    marginBottom: '15px',
-  },
-  meterFill: {
-    height: '100%',
-    borderRadius: '10px',
-    transition: 'width 1s ease-out',
-  },
-  footer: {
-    textAlign: 'center',
-    padding: '20px',
-    color: '#666',
-    fontSize: '0.85rem',
-  },
-  // Day Trading specific
-  rsiGauge: {
-    position: 'relative',
-    height: '20px',
-    background: 'linear-gradient(90deg, #00ff88 0%, #ffa502 30%, #ffa502 70%, #ff4757 100%)',
-    borderRadius: '10px',
-    marginTop: '10px',
-  },
-  rsiMarker: {
-    position: 'absolute',
-    top: '-5px',
-    width: '4px',
-    height: '30px',
-    background: '#fff',
-    borderRadius: '2px',
-    transform: 'translateX(-50%)',
-  },
-  liquidationBar: {
-    display: 'flex',
-    height: '30px',
-    borderRadius: '8px',
-    overflow: 'hidden',
-    marginTop: '10px',
-  },
-  longBar: {
-    background: '#00ff88',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontWeight: '600',
-    fontSize: '0.85rem',
-  },
-  shortBar: {
-    background: '#ff4757',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontWeight: '600',
-    fontSize: '0.85rem',
-  },
-  modeSelector: {
-    display: 'flex',
-    justifyContent: 'center',
-    gap: '10px',
-    marginBottom: '20px',
-  },
-  modeButton: {
-    padding: '12px 30px',
-    borderRadius: '25px',
-    border: 'none',
-    cursor: 'pointer',
-    fontWeight: '700',
-    fontSize: '1rem',
-    transition: 'all 0.3s',
-  },
-  modeActive: {
-    background: 'linear-gradient(90deg, #00d4ff, #7b2ff7)',
-    color: '#fff',
-    boxShadow: '0 4px 15px rgba(0,212,255,0.4)',
-  },
-  modeInactive: {
-    background: 'rgba(255,255,255,0.1)',
-    color: '#888',
-  },
+// ============== API FUNCTIONS ==============
+const fetchCoinGeckoData = async () => {
+  try {
+    const [pricesRes, globalRes, fearGreedRes] = await Promise.all([
+      fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd&include_24hr_change=true&include_market_cap=true'),
+      fetch('https://api.coingecko.com/api/v3/global'),
+      fetch('https://api.alternative.me/fng/?limit=1')
+    ]);
+    
+    const prices = await pricesRes.json();
+    const global = await globalRes.json();
+    const fearGreed = await fearGreedRes.json();
+    
+    return {
+      btcPrice: {
+        value: Math.round(prices.bitcoin.usd),
+        change: parseFloat(prices.bitcoin.usd_24h_change?.toFixed(2)) || 0,
+        marketCap: prices.bitcoin.usd_market_cap
+      },
+      ethPrice: {
+        value: Math.round(prices.ethereum.usd),
+        change: parseFloat(prices.ethereum.usd_24h_change?.toFixed(2)) || 0
+      },
+      btcDominance: {
+        value: parseFloat(global.data.market_cap_percentage.btc.toFixed(1)),
+        change: 0
+      },
+      totalMarketCap: global.data.total_market_cap.usd,
+      volume24h: {
+        total: parseFloat((global.data.total_volume.usd / 1e9).toFixed(1)),
+        btc: parseFloat((global.data.total_volume.usd * 0.4 / 1e9).toFixed(1)),
+        change: parseFloat(global.data.market_cap_change_percentage_24h_usd?.toFixed(1)) || 0
+      },
+      fearGreed: {
+        value: parseInt(fearGreed.data[0].value),
+        label: fearGreed.data[0].value_classification
+      }
+    };
+  } catch (error) {
+    console.error('API Error:', error);
+    return null;
+  }
 };
 
+// ============== LOCAL STORAGE HELPERS ==============
+const saveToStorage = (key, data) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch (e) {
+    console.error('Storage error:', e);
+  }
+};
+
+const loadFromStorage = (key, defaultValue) => {
+  try {
+    const item = localStorage.getItem(key);
+    return item ? JSON.parse(item) : defaultValue;
+  } catch (e) {
+    return defaultValue;
+  }
+};
+
+// ============== NOTIFICATION HELPER ==============
+const requestNotificationPermission = async () => {
+  if ('Notification' in window) {
+    const permission = await Notification.requestPermission();
+    return permission === 'granted';
+  }
+  return false;
+};
+
+const sendNotification = (title, body) => {
+  if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification(title, { body, icon: '🚀' });
+  }
+};
+
+// ============== MOCK DATA GENERATOR ==============
+const generateMockData = (apiData = null) => {
+  const base = {
+    // MACRO
+    m2Supply: { value: 21.5 + (Math.random() * 0.3 - 0.15), trend: 'up', change: 2.3 + (Math.random() * 0.5 - 0.25) },
+    dxy: { value: 103.42 + (Math.random() * 2 - 1), trend: 'down', change: -1.8 + (Math.random() * 0.5 - 0.25) },
+    fedWatch: { nextCut: '2025-03', probability: 68 + Math.floor(Math.random() * 10 - 5) },
+    // PRICES (will be overwritten by API if available)
+    btcPrice: { value: 94250 + Math.floor(Math.random() * 2000 - 1000), change: 3.2 + (Math.random() * 2 - 1), ath: 109000 },
+    ethPrice: { value: 3420 + Math.floor(Math.random() * 100 - 50), change: 2.8 + (Math.random() * 2 - 1) },
+    // ON-CHAIN
+    stablecoinSupply: { value: 178.5 + (Math.random() * 2 - 1), change: 5.2 + (Math.random() * 1 - 0.5) },
+    tvl: { value: 89.4 + (Math.random() * 5 - 2.5), change: 12.3 + (Math.random() * 3 - 1.5) },
+    mvrvZScore: { value: 1.8 + (Math.random() * 0.4 - 0.2), zone: 'neutral' },
+    sopr: { value: 0.98 + (Math.random() * 0.04 - 0.02), signal: 'accumulation' },
+    exchangeReserves: { btc: 2.1 + (Math.random() * 0.1 - 0.05), eth: 17.8, trend: 'outflow' },
+    // FLOWS
+    etfFlows: { daily: 245 + Math.floor(Math.random() * 100 - 50), weekly: 1820 + Math.floor(Math.random() * 200 - 100) },
+    institutionalBtc: { percentage: 20.4 + (Math.random() * 0.5 - 0.25) },
+    // DAY TRADING
+    rsi: { value: Math.floor(30 + Math.random() * 50), signal: 'neutral' },
+    fundingRate: { btc: 0.005 + Math.random() * 0.02, eth: 0.004 + Math.random() * 0.015, signal: 'bullish' },
+    openInterest: { value: 18.2 + (Math.random() * 2 - 1), change: 5.4 + (Math.random() * 4 - 2) },
+    liquidations: { 
+      last24h: 100 + Math.floor(Math.random() * 100), 
+      longPercent: 30 + Math.floor(Math.random() * 40), 
+      shortPercent: 0,
+      largest: 1.5 + Math.random() * 2
+    },
+    fearGreed: { value: 50 + Math.floor(Math.random() * 40 - 20), label: 'Neutral' },
+    volume24h: { btc: 42.3 + (Math.random() * 5 - 2.5), total: 98.7 + (Math.random() * 10 - 5), change: 12.1 + (Math.random() * 5 - 2.5) },
+    btcDominance: { value: 54.2 + (Math.random() * 2 - 1), change: -0.8 + (Math.random() * 0.4 - 0.2) },
+    volatility: { value: 2 + Math.random() * 3, label: 'Moderate' },
+    orderFlow: { buyPressure: 45 + Math.floor(Math.random() * 20), sellPressure: 0 },
+  };
+  
+  // Fix calculated values
+  base.liquidations.shortPercent = 100 - base.liquidations.longPercent;
+  base.orderFlow.sellPressure = 100 - base.orderFlow.buyPressure;
+  base.mvrvZScore.zone = base.mvrvZScore.value < 1 ? 'undervalued' : base.mvrvZScore.value > 3 ? 'overvalued' : 'neutral';
+  base.volatility.label = base.volatility.value < 2 ? 'Low' : base.volatility.value > 4 ? 'High' : 'Moderate';
+  
+  // Merge with API data if available
+  if (apiData) {
+    if (apiData.btcPrice) base.btcPrice = { ...base.btcPrice, ...apiData.btcPrice };
+    if (apiData.ethPrice) base.ethPrice = { ...base.ethPrice, ...apiData.ethPrice };
+    if (apiData.btcDominance) base.btcDominance = apiData.btcDominance;
+    if (apiData.volume24h) base.volume24h = apiData.volume24h;
+    if (apiData.fearGreed) base.fearGreed = apiData.fearGreed;
+  }
+  
+  return base;
+};
+
+// ============== THEME DEFINITIONS ==============
+const themes = {
+  dark: {
+    bg: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+    cardBg: 'rgba(255,255,255,0.08)',
+    cardBorder: 'rgba(255,255,255,0.1)',
+    text: '#fff',
+    textSecondary: '#888',
+    positive: '#00ff88',
+    negative: '#ff4757',
+    neutral: '#ffa502',
+  },
+  light: {
+    bg: 'linear-gradient(135deg, #f5f7fa 0%, #e4e8ec 50%, #d1d8e0 100%)',
+    cardBg: 'rgba(255,255,255,0.9)',
+    cardBorder: 'rgba(0,0,0,0.1)',
+    text: '#1a1a2e',
+    textSecondary: '#666',
+    positive: '#00a65a',
+    negative: '#dc3545',
+    neutral: '#f39c12',
+  }
+};
+
+// ============== DEFAULT WEIGHTS ==============
+const defaultWeights = {
+  // Long-term
+  m2Supply: 15,
+  dxy: 15,
+  mvrvZScore: 20,
+  sopr: 15,
+  exchangeReserves: 10,
+  etfFlows: 15,
+  stablecoinSupply: 10,
+  // Day trading
+  rsi: 25,
+  fundingRate: 20,
+  liquidations: 20,
+  fearGreed: 15,
+  orderFlow: 20,
+};
+
+// ============== MAIN APP ==============
 function App() {
+  // State
   const [data, setData] = useState(generateMockData());
   const [activeTab, setActiveTab] = useState('macro');
-  const [tradingMode, setTradingMode] = useState('longterm'); // 'longterm' or 'daytrading'
+  const [tradingMode, setTradingMode] = useState('longterm');
   const [lastUpdate, setLastUpdate] = useState(new Date());
+  const [theme, setTheme] = useState(loadFromStorage('theme', 'dark'));
+  const [weights, setWeights] = useState(loadFromStorage('weights', defaultWeights));
+  const [favorites, setFavorites] = useState(loadFromStorage('favorites', []));
+  const [portfolio, setPortfolio] = useState(loadFromStorage('portfolio', { btc: 0, eth: 0 }));
+  const [scoreHistory, setScoreHistory] = useState(loadFromStorage('scoreHistory', []));
+  const [alerts, setAlerts] = useState(loadFromStorage('alerts', { enabled: false, bullishThreshold: 70, bearishThreshold: 30 }));
+  const [showSettings, setShowSettings] = useState(false);
+  const [showPortfolio, setShowPortfolio] = useState(false);
+  const [showBacktest, setShowBacktest] = useState(false);
+  const [apiData, setApiData] = useState(null);
+
+  const t = themes[theme];
+
+  // Fetch real data
+  const fetchData = useCallback(async () => {
+    const realData = await fetchCoinGeckoData();
+    if (realData) {
+      setApiData(realData);
+    }
+    setData(generateMockData(realData));
+    setLastUpdate(new Date());
+  }, []);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setData(generateMockData());
-      setLastUpdate(new Date());
-    }, tradingMode === 'daytrading' ? 15000 : 60000); // 15s for day trading, 60s for long term
+    fetchData();
+    const interval = setInterval(fetchData, tradingMode === 'daytrading' ? 15000 : 60000);
     return () => clearInterval(interval);
-  }, [tradingMode]);
+  }, [tradingMode, fetchData]);
 
-  // Long-term score
-  const calculateLongTermScore = () => {
-    let score = 50;
-    if (data.m2Supply.trend === 'up') score += 10;
-    if (data.dxy.trend === 'down') score += 10;
-    if (data.mvrvZScore.value < 2) score += 10;
-    if (data.sopr.value < 1) score += 10;
-    if (data.exchangeReserves.trend === 'outflow') score += 5;
-    if (data.etfFlows.daily > 0) score += 5;
-    return Math.min(100, Math.max(0, score));
-  };
+  // Calculate scores
+  const calculateLongTermScore = useCallback(() => {
+    let score = 0;
+    let totalWeight = 0;
+    
+    // M2 Supply
+    if (data.m2Supply.trend === 'up') {
+      score += weights.m2Supply;
+    }
+    totalWeight += weights.m2Supply;
+    
+    // DXY
+    if (data.dxy.trend === 'down') {
+      score += weights.dxy;
+    }
+    totalWeight += weights.dxy;
+    
+    // MVRV
+    if (data.mvrvZScore.value < 2) {
+      score += weights.mvrvZScore;
+    } else if (data.mvrvZScore.value < 3) {
+      score += weights.mvrvZScore * 0.5;
+    }
+    totalWeight += weights.mvrvZScore;
+    
+    // SOPR
+    if (data.sopr.value < 1) {
+      score += weights.sopr;
+    } else if (data.sopr.value < 1.02) {
+      score += weights.sopr * 0.5;
+    }
+    totalWeight += weights.sopr;
+    
+    // Exchange Reserves
+    if (data.exchangeReserves.trend === 'outflow') {
+      score += weights.exchangeReserves;
+    }
+    totalWeight += weights.exchangeReserves;
+    
+    // ETF Flows
+    if (data.etfFlows.daily > 100) {
+      score += weights.etfFlows;
+    } else if (data.etfFlows.daily > 0) {
+      score += weights.etfFlows * 0.5;
+    }
+    totalWeight += weights.etfFlows;
+    
+    // Stablecoin Supply
+    if (data.stablecoinSupply.change > 3) {
+      score += weights.stablecoinSupply;
+    } else if (data.stablecoinSupply.change > 0) {
+      score += weights.stablecoinSupply * 0.5;
+    }
+    totalWeight += weights.stablecoinSupply;
+    
+    return Math.round((score / totalWeight) * 100);
+  }, [data, weights]);
 
-  // Day trading score
-  const calculateDayTradingScore = () => {
-    let score = 50;
+  const calculateDayTradingScore = useCallback(() => {
+    let score = 0;
+    let totalWeight = 0;
+    
     // RSI
-    if (data.rsi.value < 30) score += 15; // oversold = buy
-    else if (data.rsi.value > 70) score -= 15; // overbought = sell
-    else if (data.rsi.value > 50) score += 5;
+    if (data.rsi.value < 30) {
+      score += weights.rsi;
+    } else if (data.rsi.value < 45) {
+      score += weights.rsi * 0.7;
+    } else if (data.rsi.value < 55) {
+      score += weights.rsi * 0.5;
+    } else if (data.rsi.value < 70) {
+      score += weights.rsi * 0.3;
+    }
+    totalWeight += weights.rsi;
+    
     // Funding Rate
-    if (data.fundingRate.btc < 0.01) score += 10; // low funding = bullish
-    else if (data.fundingRate.btc > 0.05) score -= 10; // high funding = bearish
+    if (data.fundingRate.btc < 0.01) {
+      score += weights.fundingRate;
+    } else if (data.fundingRate.btc < 0.03) {
+      score += weights.fundingRate * 0.5;
+    }
+    totalWeight += weights.fundingRate;
+    
     // Liquidations
-    if (data.liquidations.shortPercent > 60) score += 10; // shorts getting rekt = bullish
-    if (data.liquidations.longPercent > 60) score -= 10; // longs getting rekt = bearish
+    if (data.liquidations.shortPercent > 60) {
+      score += weights.liquidations;
+    } else if (data.liquidations.shortPercent > 50) {
+      score += weights.liquidations * 0.5;
+    }
+    totalWeight += weights.liquidations;
+    
     // Fear & Greed
-    if (data.fearGreed.value < 25) score += 10; // extreme fear = buy
-    else if (data.fearGreed.value > 75) score -= 5; // greed = caution
+    if (data.fearGreed.value < 25) {
+      score += weights.fearGreed;
+    } else if (data.fearGreed.value < 40) {
+      score += weights.fearGreed * 0.7;
+    } else if (data.fearGreed.value < 60) {
+      score += weights.fearGreed * 0.5;
+    }
+    totalWeight += weights.fearGreed;
+    
     // Order Flow
-    if (data.orderFlow.buyPressure > 55) score += 5;
-    if (data.orderFlow.sellPressure > 55) score -= 5;
-    return Math.min(100, Math.max(0, score));
-  };
+    if (data.orderFlow.buyPressure > 60) {
+      score += weights.orderFlow;
+    } else if (data.orderFlow.buyPressure > 50) {
+      score += weights.orderFlow * 0.5;
+    }
+    totalWeight += weights.orderFlow;
+    
+    return Math.round((score / totalWeight) * 100);
+  }, [data, weights]);
 
   const score = tradingMode === 'longterm' ? calculateLongTermScore() : calculateDayTradingScore();
-  
+
+  // Save score history
+  useEffect(() => {
+    const now = new Date();
+    const newEntry = {
+      time: now.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }),
+      date: now.toLocaleDateString('pl-PL'),
+      score,
+      mode: tradingMode,
+      btcPrice: data.btcPrice.value
+    };
+    
+    setScoreHistory(prev => {
+      const updated = [...prev, newEntry].slice(-100); // Keep last 100 entries
+      saveToStorage('scoreHistory', updated);
+      return updated;
+    });
+  }, [score, tradingMode, data.btcPrice.value]);
+
+  // Check alerts
+  useEffect(() => {
+    if (alerts.enabled) {
+      if (score >= alerts.bullishThreshold) {
+        sendNotification('🟢 Bullish Alert!', `Score reached ${score} - Consider buying`);
+      } else if (score <= alerts.bearishThreshold) {
+        sendNotification('🔴 Bearish Alert!', `Score dropped to ${score} - Consider selling`);
+      }
+    }
+  }, [score, alerts]);
+
+  // Save settings
+  useEffect(() => {
+    saveToStorage('theme', theme);
+  }, [theme]);
+
+  useEffect(() => {
+    saveToStorage('weights', weights);
+  }, [weights]);
+
+  useEffect(() => {
+    saveToStorage('favorites', favorites);
+  }, [favorites]);
+
+  useEffect(() => {
+    saveToStorage('portfolio', portfolio);
+  }, [portfolio]);
+
+  useEffect(() => {
+    saveToStorage('alerts', alerts);
+  }, [alerts]);
+
+  // Helpers
   const getDecisionColor = () => {
-    if (score >= 70) return '#00ff88';
-    if (score >= 40) return '#ffa502';
-    return '#ff4757';
+    if (score >= 70) return t.positive;
+    if (score >= 40) return t.neutral;
+    return t.negative;
   };
-  
+
   const getDecisionLabel = () => {
     if (tradingMode === 'daytrading') {
       if (score >= 70) return 'LONG BIAS';
@@ -350,40 +391,329 @@ function App() {
     return 'BEARISH';
   };
 
-  const getRsiColor = (value) => {
-    if (value < 30) return '#00ff88';
-    if (value > 70) return '#ff4757';
-    return '#ffa502';
+  const toggleFavorite = (indicator) => {
+    setFavorites(prev => 
+      prev.includes(indicator) 
+        ? prev.filter(f => f !== indicator)
+        : [...prev, indicator]
+    );
   };
 
-  const getFearGreedColor = (value) => {
-    if (value < 25) return '#ff4757';
-    if (value < 45) return '#ffa502';
-    if (value < 55) return '#888';
-    if (value < 75) return '#00ff88';
-    return '#00ff88';
+  const portfolioValue = (portfolio.btc * data.btcPrice.value) + (portfolio.eth * data.ethPrice.value);
+
+  // Backtest data
+  const backtestData = scoreHistory
+    .filter(h => h.mode === tradingMode)
+    .slice(-30)
+    .map((h, i, arr) => ({
+      ...h,
+      signal: h.score >= 70 ? 'buy' : h.score <= 30 ? 'sell' : 'hold',
+      priceChange: i > 0 ? ((h.btcPrice - arr[i-1].btcPrice) / arr[i-1].btcPrice * 100).toFixed(2) : 0
+    }));
+
+  // ============== STYLES ==============
+  const styles = {
+    app: {
+      minHeight: '100vh',
+      background: t.bg,
+      color: t.text,
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    },
+    container: {
+      maxWidth: '1400px',
+      margin: '0 auto',
+      padding: '12px',
+    },
+    header: {
+      textAlign: 'center',
+      marginBottom: '20px',
+      padding: '15px',
+      background: t.cardBg,
+      borderRadius: '16px',
+      border: `1px solid ${t.cardBorder}`,
+    },
+    title: {
+      fontSize: '1.8rem',
+      fontWeight: '700',
+      background: 'linear-gradient(90deg, #00d4ff, #7b2ff7)',
+      WebkitBackgroundClip: 'text',
+      WebkitTextFillColor: 'transparent',
+      marginBottom: '8px',
+    },
+    subtitle: {
+      color: t.textSecondary,
+      fontSize: '0.85rem',
+    },
+    topBar: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: '10px',
+      marginBottom: '15px',
+    },
+    iconButton: {
+      background: t.cardBg,
+      border: `1px solid ${t.cardBorder}`,
+      borderRadius: '10px',
+      padding: '10px 15px',
+      cursor: 'pointer',
+      color: t.text,
+      fontSize: '1rem',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '5px',
+    },
+    grid: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+      gap: '15px',
+      marginBottom: '20px',
+    },
+    card: {
+      background: t.cardBg,
+      borderRadius: '16px',
+      padding: '15px',
+      border: `1px solid ${t.cardBorder}`,
+    },
+    cardHeader: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    cardTitle: {
+      fontSize: '0.8rem',
+      color: t.textSecondary,
+      textTransform: 'uppercase',
+      letterSpacing: '0.5px',
+    },
+    starButton: {
+      background: 'none',
+      border: 'none',
+      cursor: 'pointer',
+      fontSize: '1.2rem',
+      padding: '0',
+    },
+    cardValue: {
+      fontSize: '1.8rem',
+      fontWeight: '700',
+      marginBottom: '5px',
+    },
+    cardChange: {
+      fontSize: '0.85rem',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '5px',
+    },
+    signalBox: {
+      background: theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
+      borderRadius: '10px',
+      padding: '10px',
+      marginTop: '10px',
+      fontSize: '0.8rem',
+    },
+    tabs: {
+      display: 'flex',
+      gap: '8px',
+      marginBottom: '15px',
+      flexWrap: 'wrap',
+    },
+    tab: {
+      padding: '8px 16px',
+      borderRadius: '8px',
+      border: 'none',
+      cursor: 'pointer',
+      fontWeight: '600',
+      fontSize: '0.85rem',
+      transition: 'all 0.3s',
+    },
+    tabActive: {
+      background: 'linear-gradient(90deg, #00d4ff, #7b2ff7)',
+      color: '#fff',
+    },
+    tabInactive: {
+      background: t.cardBg,
+      color: t.textSecondary,
+      border: `1px solid ${t.cardBorder}`,
+    },
+    modeSelector: {
+      display: 'flex',
+      justifyContent: 'center',
+      gap: '10px',
+      marginBottom: '15px',
+    },
+    modeButton: {
+      padding: '10px 25px',
+      borderRadius: '25px',
+      border: 'none',
+      cursor: 'pointer',
+      fontWeight: '700',
+      fontSize: '0.9rem',
+    },
+    decisionPanel: {
+      background: 'linear-gradient(135deg, rgba(0,212,255,0.15), rgba(123,47,247,0.15))',
+      borderRadius: '16px',
+      padding: '20px',
+      textAlign: 'center',
+      border: '2px solid rgba(0,212,255,0.2)',
+      marginBottom: '20px',
+    },
+    decisionScore: {
+      fontSize: '3rem',
+      fontWeight: '800',
+    },
+    decisionLabel: {
+      fontSize: '1.2rem',
+      fontWeight: '600',
+      marginBottom: '10px',
+    },
+    meter: {
+      height: '15px',
+      background: theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+      borderRadius: '10px',
+      overflow: 'hidden',
+      marginBottom: '10px',
+    },
+    meterFill: {
+      height: '100%',
+      borderRadius: '10px',
+      background: 'linear-gradient(90deg, #ff4757, #ffa502, #00ff88)',
+      transition: 'width 1s ease-out',
+    },
+    chartContainer: {
+      background: t.cardBg,
+      borderRadius: '16px',
+      padding: '15px',
+      marginBottom: '20px',
+      border: `1px solid ${t.cardBorder}`,
+    },
+    modal: {
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      background: 'rgba(0,0,0,0.8)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000,
+      padding: '20px',
+    },
+    modalContent: {
+      background: theme === 'dark' ? '#1a1a2e' : '#fff',
+      borderRadius: '16px',
+      padding: '25px',
+      maxWidth: '500px',
+      width: '100%',
+      maxHeight: '80vh',
+      overflow: 'auto',
+      color: t.text,
+    },
+    modalTitle: {
+      fontSize: '1.3rem',
+      fontWeight: '700',
+      marginBottom: '20px',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    closeButton: {
+      background: 'none',
+      border: 'none',
+      fontSize: '1.5rem',
+      cursor: 'pointer',
+      color: t.textSecondary,
+    },
+    slider: {
+      width: '100%',
+      marginTop: '5px',
+    },
+    input: {
+      width: '100%',
+      padding: '10px',
+      borderRadius: '8px',
+      border: `1px solid ${t.cardBorder}`,
+      background: t.cardBg,
+      color: t.text,
+      marginBottom: '10px',
+    },
+    button: {
+      padding: '10px 20px',
+      borderRadius: '8px',
+      border: 'none',
+      cursor: 'pointer',
+      fontWeight: '600',
+      background: 'linear-gradient(90deg, #00d4ff, #7b2ff7)',
+      color: '#fff',
+      marginRight: '10px',
+    },
+    liquidationBar: {
+      display: 'flex',
+      height: '25px',
+      borderRadius: '8px',
+      overflow: 'hidden',
+      marginTop: '10px',
+    },
+    footer: {
+      textAlign: 'center',
+      padding: '15px',
+      color: t.textSecondary,
+      fontSize: '0.75rem',
+    },
   };
 
+  // ============== RENDER ==============
   return (
     <div style={styles.app}>
       <div style={styles.container}>
+        {/* Header */}
         <header style={styles.header}>
           <h1 style={styles.title}>🚀 Crypto Decision Hub</h1>
           <p style={styles.subtitle}>
-            Agregator wskaźników | Ostatnia aktualizacja: {lastUpdate.toLocaleTimeString('pl-PL')}
+            {apiData ? '🟢 Live Data' : '🟡 Demo Data'} | Aktualizacja: {lastUpdate.toLocaleTimeString('pl-PL')}
           </p>
         </header>
+
+        {/* Top Bar */}
+        <div style={styles.topBar}>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <button style={styles.iconButton} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+              {theme === 'dark' ? '☀️' : '🌙'}
+            </button>
+            <button style={styles.iconButton} onClick={() => setShowSettings(true)}>
+              ⚙️ Ustawienia
+            </button>
+            <button style={styles.iconButton} onClick={() => setShowPortfolio(true)}>
+              💼 Portfolio
+            </button>
+            <button style={styles.iconButton} onClick={() => setShowBacktest(true)}>
+              📊 Backtest
+            </button>
+          </div>
+          <button 
+            style={styles.iconButton} 
+            onClick={async () => {
+              const granted = await requestNotificationPermission();
+              if (granted) {
+                setAlerts(prev => ({ ...prev, enabled: !prev.enabled }));
+              }
+            }}
+          >
+            {alerts.enabled ? '🔔' : '🔕'} Alerty
+          </button>
+        </div>
 
         {/* Mode Selector */}
         <div style={styles.modeSelector}>
           <button
-            style={{ ...styles.modeButton, ...(tradingMode === 'longterm' ? styles.modeActive : styles.modeInactive) }}
+            style={{ ...styles.modeButton, ...(tradingMode === 'longterm' ? styles.tabActive : styles.tabInactive) }}
             onClick={() => { setTradingMode('longterm'); setActiveTab('macro'); }}
           >
             📈 Long-Term
           </button>
           <button
-            style={{ ...styles.modeButton, ...(tradingMode === 'daytrading' ? styles.modeActive : styles.modeInactive) }}
+            style={{ ...styles.modeButton, ...(tradingMode === 'daytrading' ? styles.tabActive : styles.tabInactive) }}
             onClick={() => { setTradingMode('daytrading'); setActiveTab('momentum'); }}
           >
             ⚡ Day Trading
@@ -395,21 +725,57 @@ function App() {
           <div style={{ ...styles.decisionScore, color: getDecisionColor() }}>{score}</div>
           <div style={{ ...styles.decisionLabel, color: getDecisionColor() }}>{getDecisionLabel()}</div>
           <div style={styles.meter}>
-            <div style={{
-              ...styles.meterFill,
-              width: `${score}%`,
-              background: `linear-gradient(90deg, #ff4757, #ffa502, #00ff88)`,
-            }} />
+            <div style={{ ...styles.meterFill, width: `${score}%` }} />
           </div>
-          <p style={{ color: '#888' }}>
+          <p style={{ color: t.textSecondary, fontSize: '0.85rem' }}>
             {tradingMode === 'longterm' 
-              ? 'Algorytm agreguje dane makro, on-chain i przepływy instytucjonalne'
-              : 'Algorytm agreguje RSI, funding rate, likwidacje i order flow'}
+              ? 'Agregacja: makro + on-chain + przepływy instytucjonalne'
+              : 'Agregacja: RSI + funding + likwidacje + order flow'}
           </p>
         </div>
 
+        {/* Favorites Section */}
+        {favorites.length > 0 && (
+          <div style={{ marginBottom: '20px' }}>
+            <h3 style={{ marginBottom: '10px', fontSize: '1rem' }}>⭐ Ulubione</h3>
+            <div style={styles.grid}>
+              {favorites.includes('btcPrice') && (
+                <div style={styles.card}>
+                  <div style={styles.cardHeader}>
+                    <div style={styles.cardTitle}>₿ Bitcoin</div>
+                    <button style={styles.starButton} onClick={() => toggleFavorite('btcPrice')}>⭐</button>
+                  </div>
+                  <div style={styles.cardValue}>${data.btcPrice.value.toLocaleString()}</div>
+                  <div style={{ ...styles.cardChange, color: data.btcPrice.change >= 0 ? t.positive : t.negative }}>
+                    {data.btcPrice.change >= 0 ? '▲' : '▼'} {Math.abs(data.btcPrice.change)}%
+                  </div>
+                </div>
+              )}
+              {favorites.includes('fearGreed') && (
+                <div style={styles.card}>
+                  <div style={styles.cardHeader}>
+                    <div style={styles.cardTitle}>😱 Fear & Greed</div>
+                    <button style={styles.starButton} onClick={() => toggleFavorite('fearGreed')}>⭐</button>
+                  </div>
+                  <div style={styles.cardValue}>{data.fearGreed.value}</div>
+                  <div style={styles.cardChange}>{data.fearGreed.label}</div>
+                </div>
+              )}
+              {favorites.includes('rsi') && (
+                <div style={styles.card}>
+                  <div style={styles.cardHeader}>
+                    <div style={styles.cardTitle}>📉 RSI</div>
+                    <button style={styles.starButton} onClick={() => toggleFavorite('rsi')}>⭐</button>
+                  </div>
+                  <div style={styles.cardValue}>{data.rsi.value}</div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Tabs */}
-        <div style={{ ...styles.tabs, marginTop: '30px' }}>
+        <div style={styles.tabs}>
           {tradingMode === 'longterm' ? (
             <>
               {['macro', 'onchain', 'flows'].map(tab => (
@@ -447,44 +813,50 @@ function App() {
             {activeTab === 'macro' && (
               <>
                 <div style={styles.card}>
-                  <div style={styles.cardTitle}>💵 M2 Money Supply (Global)</div>
-                  <div style={styles.cardValue}>${data.m2Supply.value}T</div>
-                  <div style={{ ...styles.cardChange, ...styles.positive }}>
-                    ▲ {data.m2Supply.change}% YoY
+                  <div style={styles.cardHeader}>
+                    <div style={styles.cardTitle}>💵 M2 Money Supply</div>
+                    <button style={styles.starButton} onClick={() => toggleFavorite('m2Supply')}>
+                      {favorites.includes('m2Supply') ? '⭐' : '☆'}
+                    </button>
+                  </div>
+                  <div style={styles.cardValue}>${data.m2Supply.value.toFixed(1)}T</div>
+                  <div style={{ ...styles.cardChange, color: t.positive }}>
+                    ▲ {data.m2Supply.change.toFixed(1)}% YoY
                   </div>
                   <div style={styles.signalBox}>
-                    <div style={{ ...styles.signalIndicator, background: 'rgba(0,255,136,0.2)' }}>
-                      <div style={{ ...styles.dot, background: '#00ff88' }} />
-                      <span>Ekspansja płynności - pozytywne dla ryzyka</span>
-                    </div>
+                    Ekspansja płynności - pozytywne dla ryzyka
                   </div>
                 </div>
 
                 <div style={styles.card}>
-                  <div style={styles.cardTitle}>💲 DXY (Dollar Index)</div>
-                  <div style={styles.cardValue}>{data.dxy.value}</div>
-                  <div style={{ ...styles.cardChange, ...styles.positive }}>
-                    ▼ {Math.abs(data.dxy.change)}% (spadek = pozytywne)
+                  <div style={styles.cardHeader}>
+                    <div style={styles.cardTitle}>💲 DXY (Dollar Index)</div>
+                    <button style={styles.starButton} onClick={() => toggleFavorite('dxy')}>
+                      {favorites.includes('dxy') ? '⭐' : '☆'}
+                    </button>
+                  </div>
+                  <div style={styles.cardValue}>{data.dxy.value.toFixed(2)}</div>
+                  <div style={{ ...styles.cardChange, color: t.positive }}>
+                    ▼ {Math.abs(data.dxy.change).toFixed(1)}%
                   </div>
                   <div style={styles.signalBox}>
-                    <div style={{ ...styles.signalIndicator, background: 'rgba(0,255,136,0.2)' }}>
-                      <div style={{ ...styles.dot, background: '#00ff88' }} />
-                      <span>Słabszy dolar sprzyja aktywom ryzykownym</span>
-                    </div>
+                    Słabszy dolar sprzyja aktywom ryzykownym
                   </div>
                 </div>
 
                 <div style={styles.card}>
-                  <div style={styles.cardTitle}>🏛️ FedWatch - Stopy %</div>
+                  <div style={styles.cardHeader}>
+                    <div style={styles.cardTitle}>🏛️ FedWatch</div>
+                    <button style={styles.starButton} onClick={() => toggleFavorite('fedWatch')}>
+                      {favorites.includes('fedWatch') ? '⭐' : '☆'}
+                    </button>
+                  </div>
                   <div style={styles.cardValue}>{data.fedWatch.probability}%</div>
-                  <div style={{ ...styles.cardChange, ...styles.neutral }}>
-                    Prawdop. cięcia: {data.fedWatch.nextCut}
+                  <div style={{ ...styles.cardChange, color: t.neutral }}>
+                    Cięcie: {data.fedWatch.nextCut}
                   </div>
                   <div style={styles.signalBox}>
-                    <div style={{ ...styles.signalIndicator, background: 'rgba(255,165,2,0.2)' }}>
-                      <div style={{ ...styles.dot, background: '#ffa502' }} />
-                      <span>Rynek oczekuje luzowania polityki</span>
-                    </div>
+                    Rynek oczekuje luzowania
                   </div>
                 </div>
               </>
@@ -493,44 +865,50 @@ function App() {
             {activeTab === 'onchain' && (
               <>
                 <div style={styles.card}>
-                  <div style={styles.cardTitle}>📈 MVRV Z-Score</div>
-                  <div style={styles.cardValue}>{data.mvrvZScore.value}</div>
-                  <div style={{ ...styles.cardChange, ...styles.positive }}>
-                    Strefa: {data.mvrvZScore.zone}
+                  <div style={styles.cardHeader}>
+                    <div style={styles.cardTitle}>📈 MVRV Z-Score</div>
+                    <button style={styles.starButton} onClick={() => toggleFavorite('mvrv')}>
+                      {favorites.includes('mvrv') ? '⭐' : '☆'}
+                    </button>
+                  </div>
+                  <div style={styles.cardValue}>{data.mvrvZScore.value.toFixed(2)}</div>
+                  <div style={{ ...styles.cardChange, color: t.positive }}>
+                    {data.mvrvZScore.zone}
                   </div>
                   <div style={styles.signalBox}>
-                    <div style={{ ...styles.signalIndicator, background: 'rgba(0,255,136,0.2)' }}>
-                      <div style={{ ...styles.dot, background: '#00ff88' }} />
-                      <span>&lt;2 = niedowartościowanie, &gt;7 = szczyt</span>
-                    </div>
+                    &lt;2 = niedowartościowanie, &gt;7 = szczyt
                   </div>
                 </div>
 
                 <div style={styles.card}>
-                  <div style={styles.cardTitle}>💎 SOPR</div>
-                  <div style={styles.cardValue}>{data.sopr.value}</div>
-                  <div style={{ ...styles.cardChange, ...styles.positive }}>
-                    Sygnał: {data.sopr.signal}
+                  <div style={styles.cardHeader}>
+                    <div style={styles.cardTitle}>💎 SOPR</div>
+                    <button style={styles.starButton} onClick={() => toggleFavorite('sopr')}>
+                      {favorites.includes('sopr') ? '⭐' : '☆'}
+                    </button>
+                  </div>
+                  <div style={styles.cardValue}>{data.sopr.value.toFixed(3)}</div>
+                  <div style={{ ...styles.cardChange, color: t.positive }}>
+                    {data.sopr.signal}
                   </div>
                   <div style={styles.signalBox}>
-                    <div style={{ ...styles.signalIndicator, background: 'rgba(0,255,136,0.2)' }}>
-                      <div style={{ ...styles.dot, background: '#00ff88' }} />
-                      <span>&lt;1 = akumulacja (sprzedaż ze stratą)</span>
-                    </div>
+                    &lt;1 = akumulacja
                   </div>
                 </div>
 
                 <div style={styles.card}>
-                  <div style={styles.cardTitle}>🏦 Rezerwy giełd</div>
-                  <div style={styles.cardValue}>{data.exchangeReserves.btc}M BTC</div>
-                  <div style={{ ...styles.cardChange, ...styles.positive }}>
-                    Trend: {data.exchangeReserves.trend}
+                  <div style={styles.cardHeader}>
+                    <div style={styles.cardTitle}>🏦 Rezerwy giełd</div>
+                    <button style={styles.starButton} onClick={() => toggleFavorite('reserves')}>
+                      {favorites.includes('reserves') ? '⭐' : '☆'}
+                    </button>
+                  </div>
+                  <div style={styles.cardValue}>{data.exchangeReserves.btc.toFixed(2)}M BTC</div>
+                  <div style={{ ...styles.cardChange, color: t.positive }}>
+                    {data.exchangeReserves.trend}
                   </div>
                   <div style={styles.signalBox}>
-                    <div style={{ ...styles.signalIndicator, background: 'rgba(0,255,136,0.2)' }}>
-                      <div style={{ ...styles.dot, background: '#00ff88' }} />
-                      <span>Outflow = mniej BTC na giełdach = bullish</span>
-                    </div>
+                    Outflow = bullish
                   </div>
                 </div>
               </>
@@ -539,44 +917,37 @@ function App() {
             {activeTab === 'flows' && (
               <>
                 <div style={styles.card}>
-                  <div style={styles.cardTitle}>📊 ETF Flows (BTC)</div>
-                  <div style={styles.cardValue}>+${data.etfFlows.daily}M</div>
-                  <div style={{ ...styles.cardChange, ...styles.positive }}>
-                    Tygodniowo: +${data.etfFlows.weekly}M
+                  <div style={styles.cardHeader}>
+                    <div style={styles.cardTitle}>📊 ETF Flows</div>
+                    <button style={styles.starButton} onClick={() => toggleFavorite('etf')}>
+                      {favorites.includes('etf') ? '⭐' : '☆'}
+                    </button>
                   </div>
-                  <div style={styles.signalBox}>
-                    <div style={{ ...styles.signalIndicator, background: 'rgba(0,255,136,0.2)' }}>
-                      <div style={{ ...styles.dot, background: '#00ff88' }} />
-                      <span>Pozytywne napływy do ETF-ów</span>
-                    </div>
+                  <div style={{ ...styles.cardValue, color: data.etfFlows.daily >= 0 ? t.positive : t.negative }}>
+                    {data.etfFlows.daily >= 0 ? '+' : ''}${data.etfFlows.daily}M
+                  </div>
+                  <div style={styles.cardChange}>
+                    Tydzień: +${data.etfFlows.weekly}M
                   </div>
                 </div>
 
                 <div style={styles.card}>
-                  <div style={styles.cardTitle}>🏢 Instytucjonalny BTC</div>
-                  <div style={styles.cardValue}>{data.institutionalBtc.percentage}%</div>
-                  <div style={{ ...styles.cardChange, ...styles.positive }}>
+                  <div style={styles.cardHeader}>
+                    <div style={styles.cardTitle}>🏢 Instytucjonalny BTC</div>
+                  </div>
+                  <div style={styles.cardValue}>{data.institutionalBtc.percentage.toFixed(1)}%</div>
+                  <div style={styles.signalBox}>
                     Supply w rękach instytucji
                   </div>
-                  <div style={styles.signalBox}>
-                    <div style={{ ...styles.signalIndicator, background: 'rgba(0,255,136,0.2)' }}>
-                      <div style={{ ...styles.dot, background: '#00ff88' }} />
-                      <span>Rosnąca adopcja instytucjonalna</span>
-                    </div>
-                  </div>
                 </div>
 
                 <div style={styles.card}>
-                  <div style={styles.cardTitle}>💰 Stablecoin Supply</div>
-                  <div style={styles.cardValue}>${data.stablecoinSupply.value}B</div>
-                  <div style={{ ...styles.cardChange, ...styles.positive }}>
-                    ▲ {data.stablecoinSupply.change}% (30d)
+                  <div style={styles.cardHeader}>
+                    <div style={styles.cardTitle}>💰 Stablecoin Supply</div>
                   </div>
-                  <div style={styles.signalBox}>
-                    <div style={{ ...styles.signalIndicator, background: 'rgba(0,255,136,0.2)' }}>
-                      <div style={{ ...styles.dot, background: '#00ff88' }} />
-                      <span>Więcej "amunicji" na rynku</span>
-                    </div>
+                  <div style={styles.cardValue}>${data.stablecoinSupply.value.toFixed(1)}B</div>
+                  <div style={{ ...styles.cardChange, color: t.positive }}>
+                    ▲ {data.stablecoinSupply.change.toFixed(1)}%
                   </div>
                 </div>
               </>
@@ -590,54 +961,68 @@ function App() {
             {activeTab === 'momentum' && (
               <>
                 <div style={styles.card}>
-                  <div style={styles.cardTitle}>📉 RSI (14)</div>
-                  <div style={{ ...styles.cardValue, color: getRsiColor(data.rsi.value) }}>
+                  <div style={styles.cardHeader}>
+                    <div style={styles.cardTitle}>📉 RSI (14)</div>
+                    <button style={styles.starButton} onClick={() => toggleFavorite('rsi')}>
+                      {favorites.includes('rsi') ? '⭐' : '☆'}
+                    </button>
+                  </div>
+                  <div style={{ 
+                    ...styles.cardValue, 
+                    color: data.rsi.value < 30 ? t.positive : data.rsi.value > 70 ? t.negative : t.neutral 
+                  }}>
                     {data.rsi.value}
                   </div>
-                  <div style={styles.rsiGauge}>
-                    <div style={{ ...styles.rsiMarker, left: `${data.rsi.value}%` }} />
+                  <div style={{
+                    height: '15px',
+                    background: 'linear-gradient(90deg, #00ff88, #ffa502, #ff4757)',
+                    borderRadius: '8px',
+                    position: 'relative',
+                    marginTop: '10px',
+                  }}>
+                    <div style={{
+                      position: 'absolute',
+                      left: `${data.rsi.value}%`,
+                      top: '-3px',
+                      width: '4px',
+                      height: '21px',
+                      background: '#fff',
+                      borderRadius: '2px',
+                      transform: 'translateX(-50%)',
+                    }} />
                   </div>
                   <div style={styles.signalBox}>
-                    <div style={{ ...styles.signalIndicator, background: `rgba(${data.rsi.value > 70 ? '255,71,87' : data.rsi.value < 30 ? '0,255,136' : '255,165,2'},0.2)` }}>
-                      <div style={{ ...styles.dot, background: getRsiColor(data.rsi.value) }} />
-                      <span>
-                        {data.rsi.value > 70 ? 'Wykupienie - rozważ short' : 
-                         data.rsi.value < 30 ? 'Wyprzedanie - rozważ long' : 
-                         'Strefa neutralna'}
-                      </span>
-                    </div>
+                    {data.rsi.value < 30 ? '🟢 Wyprzedanie - long' : 
+                     data.rsi.value > 70 ? '🔴 Wykupienie - short' : '🟡 Neutralne'}
                   </div>
                 </div>
 
                 <div style={styles.card}>
-                  <div style={styles.cardTitle}>💹 Funding Rate</div>
-                  <div style={styles.cardValue}>{(data.fundingRate.btc * 100).toFixed(3)}%</div>
-                  <div style={{ ...styles.cardChange, color: data.fundingRate.btc > 0.03 ? '#ff4757' : '#00ff88' }}>
+                  <div style={styles.cardHeader}>
+                    <div style={styles.cardTitle}>💹 Funding Rate</div>
+                  </div>
+                  <div style={{ 
+                    ...styles.cardValue,
+                    color: data.fundingRate.btc > 0.03 ? t.negative : t.positive
+                  }}>
+                    {(data.fundingRate.btc * 100).toFixed(3)}%
+                  </div>
+                  <div style={styles.cardChange}>
                     ETH: {(data.fundingRate.eth * 100).toFixed(3)}%
                   </div>
                   <div style={styles.signalBox}>
-                    <div style={{ ...styles.signalIndicator, background: data.fundingRate.btc > 0.03 ? 'rgba(255,71,87,0.2)' : 'rgba(0,255,136,0.2)' }}>
-                      <div style={{ ...styles.dot, background: data.fundingRate.btc > 0.03 ? '#ff4757' : '#00ff88' }} />
-                      <span>
-                        {data.fundingRate.btc > 0.05 ? 'Wysoki funding - rynek przegrzany' :
-                         data.fundingRate.btc < 0 ? 'Ujemny funding - longi płacą mniej' :
-                         'Normalny funding - brak ekstremalnego sentymentu'}
-                      </span>
-                    </div>
+                    {data.fundingRate.btc > 0.05 ? '🔴 Przegrzany' : 
+                     data.fundingRate.btc < 0.01 ? '🟢 Niski - bullish' : '🟡 Normalny'}
                   </div>
                 </div>
 
                 <div style={styles.card}>
-                  <div style={styles.cardTitle}>📊 Open Interest</div>
-                  <div style={styles.cardValue}>${data.openInterest.value}B</div>
-                  <div style={{ ...styles.cardChange, ...styles.positive }}>
-                    ▲ {data.openInterest.change}% (24h)
+                  <div style={styles.cardHeader}>
+                    <div style={styles.cardTitle}>📊 Open Interest</div>
                   </div>
-                  <div style={styles.signalBox}>
-                    <div style={{ ...styles.signalIndicator, background: 'rgba(0,255,136,0.2)' }}>
-                      <div style={{ ...styles.dot, background: '#00ff88' }} />
-                      <span>Rosnący OI = więcej zaangażowania</span>
-                    </div>
+                  <div style={styles.cardValue}>${data.openInterest.value.toFixed(1)}B</div>
+                  <div style={{ ...styles.cardChange, color: data.openInterest.change >= 0 ? t.positive : t.negative }}>
+                    {data.openInterest.change >= 0 ? '▲' : '▼'} {Math.abs(data.openInterest.change).toFixed(1)}%
                   </div>
                 </div>
               </>
@@ -646,55 +1031,42 @@ function App() {
             {activeTab === 'sentiment' && (
               <>
                 <div style={styles.card}>
-                  <div style={styles.cardTitle}>😱 Fear & Greed Index</div>
-                  <div style={{ ...styles.cardValue, color: getFearGreedColor(data.fearGreed.value) }}>
+                  <div style={styles.cardHeader}>
+                    <div style={styles.cardTitle}>😱 Fear & Greed</div>
+                    <button style={styles.starButton} onClick={() => toggleFavorite('fearGreed')}>
+                      {favorites.includes('fearGreed') ? '⭐' : '☆'}
+                    </button>
+                  </div>
+                  <div style={{ 
+                    ...styles.cardValue,
+                    color: data.fearGreed.value < 30 ? t.negative : data.fearGreed.value > 70 ? t.positive : t.neutral
+                  }}>
                     {data.fearGreed.value}
                   </div>
-                  <div style={{ ...styles.cardChange, color: getFearGreedColor(data.fearGreed.value) }}>
-                    {data.fearGreed.label}
-                  </div>
-                  <div style={styles.rsiGauge}>
-                    <div style={{ ...styles.rsiMarker, left: `${data.fearGreed.value}%` }} />
-                  </div>
+                  <div style={styles.cardChange}>{data.fearGreed.label}</div>
                   <div style={styles.signalBox}>
-                    <div style={{ ...styles.signalIndicator, background: 'rgba(255,165,2,0.2)' }}>
-                      <div style={{ ...styles.dot, background: '#ffa502' }} />
-                      <span>
-                        {data.fearGreed.value < 25 ? 'Ekstremalny strach - okazja?' :
-                         data.fearGreed.value > 75 ? 'Ekstremalny chciwość - ostrożność' :
-                         'Umiarkowany sentyment'}
-                      </span>
-                    </div>
+                    {data.fearGreed.value < 25 ? '🟢 Ekstremalny strach - okazja' : 
+                     data.fearGreed.value > 75 ? '🔴 Chciwość - ostrożność' : '🟡 Neutralne'}
                   </div>
                 </div>
 
                 <div style={styles.card}>
-                  <div style={styles.cardTitle}>📈 Volume 24h</div>
-                  <div style={styles.cardValue}>${data.volume24h.total}B</div>
-                  <div style={{ ...styles.cardChange, ...styles.positive }}>
-                    ▲ {data.volume24h.change}% | BTC: ${data.volume24h.btc}B
+                  <div style={styles.cardHeader}>
+                    <div style={styles.cardTitle}>📈 Volume 24h</div>
                   </div>
-                  <div style={styles.signalBox}>
-                    <div style={{ ...styles.signalIndicator, background: 'rgba(0,255,136,0.2)' }}>
-                      <div style={{ ...styles.dot, background: '#00ff88' }} />
-                      <span>Wysoki wolumen potwierdza ruch</span>
-                    </div>
+                  <div style={styles.cardValue}>${data.volume24h.total.toFixed(1)}B</div>
+                  <div style={{ ...styles.cardChange, color: data.volume24h.change >= 0 ? t.positive : t.negative }}>
+                    {data.volume24h.change >= 0 ? '▲' : '▼'} {Math.abs(data.volume24h.change).toFixed(1)}%
                   </div>
                 </div>
 
                 <div style={styles.card}>
-                  <div style={styles.cardTitle}>👑 BTC Dominance</div>
-                  <div style={styles.cardValue}>{data.btcDominance.value}%</div>
-                  <div style={{ ...styles.cardChange, color: data.btcDominance.change > 0 ? '#ffa502' : '#00ff88' }}>
-                    {data.btcDominance.change > 0 ? '▲' : '▼'} {Math.abs(data.btcDominance.change)}%
+                  <div style={styles.cardHeader}>
+                    <div style={styles.cardTitle}>👑 BTC Dominance</div>
                   </div>
+                  <div style={styles.cardValue}>{data.btcDominance.value.toFixed(1)}%</div>
                   <div style={styles.signalBox}>
-                    <div style={{ ...styles.signalIndicator, background: 'rgba(255,165,2,0.2)' }}>
-                      <div style={{ ...styles.dot, background: '#ffa502' }} />
-                      <span>
-                        {data.btcDominance.change < 0 ? 'Spadająca dominacja - alt season?' : 'Rosnąca dominacja - BTC lideruje'}
-                      </span>
-                    </div>
+                    {data.btcDominance.change < -1 ? 'Alt season?' : 'BTC lideruje'}
                   </div>
                 </div>
               </>
@@ -703,67 +1075,80 @@ function App() {
             {activeTab === 'liquidations' && (
               <>
                 <div style={styles.card}>
-                  <div style={styles.cardTitle}>💥 Likwidacje 24h</div>
-                  <div style={styles.cardValue}>${data.liquidations.last24h}M</div>
-                  <div style={{ ...styles.cardChange, ...styles.neutral }}>
-                    Największa: ${data.liquidations.largest}M
+                  <div style={styles.cardHeader}>
+                    <div style={styles.cardTitle}>💥 Likwidacje 24h</div>
                   </div>
+                  <div style={styles.cardValue}>${data.liquidations.last24h}M</div>
                   <div style={styles.liquidationBar}>
-                    <div style={{ ...styles.longBar, width: `${data.liquidations.longPercent}%` }}>
+                    <div style={{ 
+                      width: `${data.liquidations.longPercent}%`, 
+                      background: t.positive,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontWeight: '600',
+                      fontSize: '0.75rem',
+                    }}>
                       L {data.liquidations.longPercent}%
                     </div>
-                    <div style={{ ...styles.shortBar, width: `${data.liquidations.shortPercent}%` }}>
+                    <div style={{ 
+                      width: `${data.liquidations.shortPercent}%`, 
+                      background: t.negative,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontWeight: '600',
+                      fontSize: '0.75rem',
+                    }}>
                       S {data.liquidations.shortPercent}%
                     </div>
                   </div>
                   <div style={styles.signalBox}>
-                    <div style={{ ...styles.signalIndicator, background: data.liquidations.shortPercent > 60 ? 'rgba(0,255,136,0.2)' : 'rgba(255,71,87,0.2)' }}>
-                      <div style={{ ...styles.dot, background: data.liquidations.shortPercent > 60 ? '#00ff88' : '#ff4757' }} />
-                      <span>
-                        {data.liquidations.shortPercent > 60 ? 'Short squeeze - bullish momentum' :
-                         data.liquidations.longPercent > 60 ? 'Long squeeze - bearish momentum' :
-                         'Zrównoważone likwidacje'}
-                      </span>
-                    </div>
+                    {data.liquidations.shortPercent > 60 ? '🟢 Short squeeze' : 
+                     data.liquidations.longPercent > 60 ? '🔴 Long squeeze' : '🟡 Zbalansowane'}
                   </div>
                 </div>
 
                 <div style={styles.card}>
-                  <div style={styles.cardTitle}>⚖️ Order Flow</div>
+                  <div style={styles.cardHeader}>
+                    <div style={styles.cardTitle}>⚖️ Order Flow</div>
+                  </div>
                   <div style={styles.cardValue}>{data.orderFlow.buyPressure}% Buy</div>
                   <div style={styles.liquidationBar}>
-                    <div style={{ ...styles.longBar, width: `${data.orderFlow.buyPressure}%` }}>
+                    <div style={{ 
+                      width: `${data.orderFlow.buyPressure}%`, 
+                      background: t.positive,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontWeight: '600',
+                      fontSize: '0.75rem',
+                    }}>
                       Buy
                     </div>
-                    <div style={{ ...styles.shortBar, width: `${data.orderFlow.sellPressure}%` }}>
+                    <div style={{ 
+                      width: `${data.orderFlow.sellPressure}%`, 
+                      background: t.negative,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontWeight: '600',
+                      fontSize: '0.75rem',
+                    }}>
                       Sell
                     </div>
                   </div>
-                  <div style={styles.signalBox}>
-                    <div style={{ ...styles.signalIndicator, background: data.orderFlow.buyPressure > 55 ? 'rgba(0,255,136,0.2)' : 'rgba(255,71,87,0.2)' }}>
-                      <div style={{ ...styles.dot, background: data.orderFlow.buyPressure > 55 ? '#00ff88' : '#ff4757' }} />
-                      <span>
-                        {data.orderFlow.buyPressure > 55 ? 'Przewaga kupujących' : 'Przewaga sprzedających'}
-                      </span>
-                    </div>
-                  </div>
                 </div>
 
                 <div style={styles.card}>
-                  <div style={styles.cardTitle}>🌊 Volatility (ATR)</div>
-                  <div style={styles.cardValue}>{data.volatility.value}%</div>
-                  <div style={{ ...styles.cardChange, ...styles.neutral }}>
-                    {data.volatility.label}
+                  <div style={styles.cardHeader}>
+                    <div style={styles.cardTitle}>🌊 Volatility</div>
                   </div>
+                  <div style={styles.cardValue}>{data.volatility.value.toFixed(1)}%</div>
+                  <div style={styles.cardChange}>{data.volatility.label}</div>
                   <div style={styles.signalBox}>
-                    <div style={{ ...styles.signalIndicator, background: 'rgba(255,165,2,0.2)' }}>
-                      <div style={{ ...styles.dot, background: '#ffa502' }} />
-                      <span>
-                        {data.volatility.value > 5 ? 'Wysoka zmienność - szersze SL' : 
-                         data.volatility.value < 2 ? 'Niska zmienność - możliwy breakout' :
-                         'Normalna zmienność'}
-                      </span>
-                    </div>
+                    {data.volatility.value > 4 ? 'Szersze SL' : 
+                     data.volatility.value < 2 ? 'Możliwy breakout' : 'Normalnie'}
                   </div>
                 </div>
               </>
@@ -771,69 +1156,282 @@ function App() {
           </div>
         )}
 
-        {/* Chart */}
+        {/* Score History Chart */}
         <div style={styles.chartContainer}>
-          <h3 style={{ marginBottom: '20px' }}>
-            {tradingMode === 'longterm' 
-              ? '📈 BTC vs M2 Supply vs DXY (korelacja)' 
-              : '📊 RSI & Likwidacje (24h)'}
-          </h3>
-          {tradingMode === 'longterm' ? (
-            <ResponsiveContainer width="100%" height={300}>
-              <AreaChart data={chartData}>
-                <XAxis dataKey="name" stroke="#666" />
-                <YAxis yAxisId="btc" orientation="left" stroke="#00d4ff" />
-                <YAxis yAxisId="m2" orientation="right" stroke="#7b2ff7" />
-                <Tooltip
-                  contentStyle={{ background: '#1a1a2e', border: '1px solid #333', borderRadius: '8px' }}
-                />
-                <Area yAxisId="btc" type="monotone" dataKey="btc" stroke="#00d4ff" fill="rgba(0,212,255,0.3)" name="BTC ($)" />
-                <Line yAxisId="m2" type="monotone" dataKey="m2" stroke="#7b2ff7" strokeWidth={2} dot={false} name="M2 ($T)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : (
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={liquidationData}>
-                <XAxis dataKey="time" stroke="#666" />
-                <YAxis stroke="#666" />
-                <Tooltip
-                  contentStyle={{ background: '#1a1a2e', border: '1px solid #333', borderRadius: '8px' }}
-                />
-                <Bar dataKey="longs" fill="#00ff88" name="Longs ($M)" />
-                <Bar dataKey="shorts" fill="#ff4757" name="Shorts ($M)" />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
+          <h3 style={{ marginBottom: '15px', fontSize: '1rem' }}>📈 Historia Score</h3>
+          <ResponsiveContainer width="100%" height={200}>
+            <AreaChart data={scoreHistory.filter(h => h.mode === tradingMode).slice(-20)}>
+              <XAxis dataKey="time" stroke={t.textSecondary} fontSize={10} />
+              <YAxis domain={[0, 100]} stroke={t.textSecondary} fontSize={10} />
+              <Tooltip 
+                contentStyle={{ 
+                  background: theme === 'dark' ? '#1a1a2e' : '#fff', 
+                  border: `1px solid ${t.cardBorder}`,
+                  borderRadius: '8px',
+                  color: t.text
+                }} 
+              />
+              <Area type="monotone" dataKey="score" stroke="#7b2ff7" fill="rgba(123,47,247,0.3)" />
+            </AreaChart>
+          </ResponsiveContainer>
         </div>
 
-        {/* Price Cards */}
+        {/* Prices */}
         <div style={styles.grid}>
           <div style={styles.card}>
-            <div style={styles.cardTitle}>₿ Bitcoin</div>
+            <div style={styles.cardHeader}>
+              <div style={styles.cardTitle}>₿ Bitcoin</div>
+              <button style={styles.starButton} onClick={() => toggleFavorite('btcPrice')}>
+                {favorites.includes('btcPrice') ? '⭐' : '☆'}
+              </button>
+            </div>
             <div style={styles.cardValue}>${data.btcPrice.value.toLocaleString()}</div>
-            <div style={{ ...styles.cardChange, ...styles.positive }}>
-              ▲ {data.btcPrice.change}% (24h) | ATH: ${data.btcPrice.ath.toLocaleString()}
+            <div style={{ ...styles.cardChange, color: data.btcPrice.change >= 0 ? t.positive : t.negative }}>
+              {data.btcPrice.change >= 0 ? '▲' : '▼'} {Math.abs(data.btcPrice.change).toFixed(1)}%
             </div>
           </div>
           <div style={styles.card}>
-            <div style={styles.cardTitle}>Ξ Ethereum</div>
+            <div style={styles.cardHeader}>
+              <div style={styles.cardTitle}>Ξ Ethereum</div>
+            </div>
             <div style={styles.cardValue}>${data.ethPrice.value.toLocaleString()}</div>
-            <div style={{ ...styles.cardChange, ...styles.positive }}>
-              ▲ {data.ethPrice.change}% (24h)
+            <div style={{ ...styles.cardChange, color: data.ethPrice.change >= 0 ? t.positive : t.negative }}>
+              {data.ethPrice.change >= 0 ? '▲' : '▼'} {Math.abs(data.ethPrice.change).toFixed(1)}%
             </div>
           </div>
           <div style={styles.card}>
-            <div style={styles.cardTitle}>🔒 Total TVL (DeFi)</div>
-            <div style={styles.cardValue}>${data.tvl.value}B</div>
-            <div style={{ ...styles.cardChange, ...styles.positive }}>
-              ▲ {data.tvl.change}% (30d)
+            <div style={styles.cardHeader}>
+              <div style={styles.cardTitle}>🔒 TVL DeFi</div>
+            </div>
+            <div style={styles.cardValue}>${data.tvl.value.toFixed(1)}B</div>
+            <div style={{ ...styles.cardChange, color: t.positive }}>
+              ▲ {data.tvl.change.toFixed(1)}%
             </div>
           </div>
         </div>
 
         <footer style={styles.footer}>
-          <p>⚠️ To nie jest porada inwestycyjna. Zawsze przeprowadzaj własną analizę (DYOR).</p>
+          <p>⚠️ To nie jest porada inwestycyjna. DYOR.</p>
         </footer>
+
+        {/* Settings Modal */}
+        {showSettings && (
+          <div style={styles.modal} onClick={() => setShowSettings(false)}>
+            <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+              <div style={styles.modalTitle}>
+                ⚙️ Ustawienia wag
+                <button style={styles.closeButton} onClick={() => setShowSettings(false)}>×</button>
+              </div>
+              
+              <h4 style={{ marginBottom: '15px' }}>Long-Term</h4>
+              {['m2Supply', 'dxy', 'mvrvZScore', 'sopr', 'exchangeReserves', 'etfFlows'].map(key => (
+                <div key={key} style={{ marginBottom: '15px' }}>
+                  <label style={{ fontSize: '0.85rem' }}>
+                    {key}: {weights[key]}%
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="30"
+                    value={weights[key]}
+                    onChange={e => setWeights(prev => ({ ...prev, [key]: parseInt(e.target.value) }))}
+                    style={styles.slider}
+                  />
+                </div>
+              ))}
+              
+              <h4 style={{ margin: '20px 0 15px' }}>Day Trading</h4>
+              {['rsi', 'fundingRate', 'liquidations', 'fearGreed', 'orderFlow'].map(key => (
+                <div key={key} style={{ marginBottom: '15px' }}>
+                  <label style={{ fontSize: '0.85rem' }}>
+                    {key}: {weights[key]}%
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="40"
+                    value={weights[key]}
+                    onChange={e => setWeights(prev => ({ ...prev, [key]: parseInt(e.target.value) }))}
+                    style={styles.slider}
+                  />
+                </div>
+              ))}
+
+              <h4 style={{ margin: '20px 0 15px' }}>🔔 Alerty</h4>
+              <div style={{ marginBottom: '15px' }}>
+                <label style={{ fontSize: '0.85rem' }}>
+                  Próg bullish: {alerts.bullishThreshold}
+                </label>
+                <input
+                  type="range"
+                  min="50"
+                  max="90"
+                  value={alerts.bullishThreshold}
+                  onChange={e => setAlerts(prev => ({ ...prev, bullishThreshold: parseInt(e.target.value) }))}
+                  style={styles.slider}
+                />
+              </div>
+              <div style={{ marginBottom: '15px' }}>
+                <label style={{ fontSize: '0.85rem' }}>
+                  Próg bearish: {alerts.bearishThreshold}
+                </label>
+                <input
+                  type="range"
+                  min="10"
+                  max="50"
+                  value={alerts.bearishThreshold}
+                  onChange={e => setAlerts(prev => ({ ...prev, bearishThreshold: parseInt(e.target.value) }))}
+                  style={styles.slider}
+                />
+              </div>
+
+              <button 
+                style={styles.button} 
+                onClick={() => setWeights(defaultWeights)}
+              >
+                Reset domyślne
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Portfolio Modal */}
+        {showPortfolio && (
+          <div style={styles.modal} onClick={() => setShowPortfolio(false)}>
+            <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+              <div style={styles.modalTitle}>
+                💼 Portfolio
+                <button style={styles.closeButton} onClick={() => setShowPortfolio(false)}>×</button>
+              </div>
+              
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ fontSize: '0.85rem', display: 'block', marginBottom: '5px' }}>
+                  BTC Holdings:
+                </label>
+                <input
+                  type="number"
+                  step="0.001"
+                  value={portfolio.btc}
+                  onChange={e => setPortfolio(prev => ({ ...prev, btc: parseFloat(e.target.value) || 0 }))}
+                  style={styles.input}
+                  placeholder="0.00"
+                />
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ fontSize: '0.85rem', display: 'block', marginBottom: '5px' }}>
+                  ETH Holdings:
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={portfolio.eth}
+                  onChange={e => setPortfolio(prev => ({ ...prev, eth: parseFloat(e.target.value) || 0 }))}
+                  style={styles.input}
+                  placeholder="0.00"
+                />
+              </div>
+
+              <div style={{ 
+                background: 'linear-gradient(135deg, rgba(0,212,255,0.2), rgba(123,47,247,0.2))',
+                borderRadius: '12px',
+                padding: '20px',
+                textAlign: 'center',
+                marginBottom: '20px'
+              }}>
+                <div style={{ fontSize: '0.85rem', color: t.textSecondary, marginBottom: '5px' }}>
+                  Wartość Portfolio
+                </div>
+                <div style={{ fontSize: '2rem', fontWeight: '700', color: t.positive }}>
+                  ${portfolioValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                </div>
+              </div>
+
+              <ResponsiveContainer width="100%" height={150}>
+                <PieChart>
+                  <Pie
+                    data={[
+                      { name: 'BTC', value: portfolio.btc * data.btcPrice.value },
+                      { name: 'ETH', value: portfolio.eth * data.ethPrice.value },
+                    ]}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={40}
+                    outerRadius={60}
+                    dataKey="value"
+                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  >
+                    <Cell fill="#f7931a" />
+                    <Cell fill="#627eea" />
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+
+        {/* Backtest Modal */}
+        {showBacktest && (
+          <div style={styles.modal} onClick={() => setShowBacktest(false)}>
+            <div style={{ ...styles.modalContent, maxWidth: '700px' }} onClick={e => e.stopPropagation()}>
+              <div style={styles.modalTitle}>
+                📊 Backtest (ostatnie 30 sygnałów)
+                <button style={styles.closeButton} onClick={() => setShowBacktest(false)}>×</button>
+              </div>
+              
+              <div style={{ marginBottom: '15px', fontSize: '0.85rem', color: t.textSecondary }}>
+                Sygnały: 🟢 Buy (score ≥70) | 🔴 Sell (score ≤30) | 🟡 Hold
+              </div>
+
+              <div style={{ maxHeight: '400px', overflow: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: `1px solid ${t.cardBorder}` }}>
+                      <th style={{ padding: '8px', textAlign: 'left' }}>Czas</th>
+                      <th style={{ padding: '8px', textAlign: 'center' }}>Score</th>
+                      <th style={{ padding: '8px', textAlign: 'center' }}>Sygnał</th>
+                      <th style={{ padding: '8px', textAlign: 'right' }}>BTC</th>
+                      <th style={{ padding: '8px', textAlign: 'right' }}>Zmiana</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {backtestData.map((row, i) => (
+                      <tr key={i} style={{ borderBottom: `1px solid ${t.cardBorder}` }}>
+                        <td style={{ padding: '8px' }}>{row.time}</td>
+                        <td style={{ padding: '8px', textAlign: 'center' }}>{row.score}</td>
+                        <td style={{ padding: '8px', textAlign: 'center' }}>
+                          {row.signal === 'buy' ? '🟢' : row.signal === 'sell' ? '🔴' : '🟡'}
+                        </td>
+                        <td style={{ padding: '8px', textAlign: 'right' }}>${row.btcPrice?.toLocaleString()}</td>
+                        <td style={{ 
+                          padding: '8px', 
+                          textAlign: 'right',
+                          color: parseFloat(row.priceChange) >= 0 ? t.positive : t.negative
+                        }}>
+                          {row.priceChange}%
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div style={{ 
+                marginTop: '20px', 
+                padding: '15px', 
+                background: t.cardBg, 
+                borderRadius: '8px',
+                fontSize: '0.85rem'
+              }}>
+                <strong>Statystyki:</strong><br/>
+                Sygnały Buy: {backtestData.filter(d => d.signal === 'buy').length}<br/>
+                Sygnały Sell: {backtestData.filter(d => d.signal === 'sell').length}<br/>
+                Sygnały Hold: {backtestData.filter(d => d.signal === 'hold').length}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
