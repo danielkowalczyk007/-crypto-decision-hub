@@ -603,6 +603,25 @@ const HelpModal = ({ helpKey, onClose, theme }) => {
   );
 };
 
+// ============== HELP BUTTON COMPONENT ==============
+const HelpButton = ({ helpKey, onHelp, theme }) => {
+  const t = theme === 'dark' 
+    ? { bg: '#1e293b', color: '#64748b', hoverBg: '#334155' }
+    : { bg: '#f1f5f9', color: '#64748b', hoverBg: '#e2e8f0' };
+  return (
+    <button 
+      onClick={() => onHelp(helpKey)} 
+      style={{
+        width: '16px', height: '16px',
+        borderRadius: '50%', background: t.bg, border: 'none', color: t.color,
+        fontSize: '9px', fontWeight: '600', cursor: 'pointer', display: 'inline-flex',
+        alignItems: 'center', justifyContent: 'center', marginLeft: '4px',
+        opacity: 0.7, verticalAlign: 'middle'
+      }}
+    >?</button>
+  );
+};
+
 // ============== CARD COMPONENT ==============
 const Card = ({ children, helpKey, onHelp, style, theme, signalColor, isLive }) => {
   const t = theme === 'dark' ? { cardBg: '#0f172a', border: '#1e293b', helpBg: '#1e293b', helpColor: '#64748b' }
@@ -1492,15 +1511,20 @@ function App() {
               
               <div style={{ display: 'grid', gap: '10px', gridTemplateColumns: 'repeat(2, 1fr)' }}>
                 {/* Altseason Index */}
-                <div style={{
+                <div 
+                  onClick={() => setHelpModal('altseasonIndex')}
+                  style={{
                   padding: '12px',
                   background: altseasonData?.altseasonIndex > 60 ? `${t.positive}15` : 
                              altseasonData?.altseasonIndex < 40 ? `${t.negative}15` : `${t.warning}15`,
                   borderRadius: '10px',
                   textAlign: 'center',
                   border: `1px solid ${altseasonData?.altseasonIndex > 60 ? t.positive : 
-                          altseasonData?.altseasonIndex < 40 ? t.negative : t.warning}30`
+                          altseasonData?.altseasonIndex < 40 ? t.negative : t.warning}30`,
+                  cursor: 'pointer',
+                  position: 'relative'
                 }}>
+                  <div style={{ position: 'absolute', top: '6px', right: '6px', opacity: 0.5, fontSize: '10px' }}>?</div>
                   <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>
                     🌊 Altseason Index
                   </div>
@@ -1521,15 +1545,20 @@ function App() {
                 </div>
                 
                 {/* ETH/BTC Ratio */}
-                <div style={{
+                <div 
+                  onClick={() => setHelpModal('ethBtcRatio')}
+                  style={{
                   padding: '12px',
                   background: altseasonData?.ethBtcRatio > 0.05 ? `${t.positive}15` : 
                              altseasonData?.ethBtcRatio < 0.035 ? `${t.negative}15` : `${t.warning}15`,
                   borderRadius: '10px',
                   textAlign: 'center',
                   border: `1px solid ${altseasonData?.ethBtcRatio > 0.05 ? t.positive : 
-                          altseasonData?.ethBtcRatio < 0.035 ? t.negative : t.warning}30`
+                          altseasonData?.ethBtcRatio < 0.035 ? t.negative : t.warning}30`,
+                  cursor: 'pointer',
+                  position: 'relative'
                 }}>
+                  <div style={{ position: 'absolute', top: '6px', right: '6px', opacity: 0.5, fontSize: '10px' }}>?</div>
                   <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>
                     ⚡ ETH/BTC Ratio
                   </div>
@@ -1549,13 +1578,18 @@ function App() {
                 </div>
                 
                 {/* Total2 */}
-                <div style={{
+                <div 
+                  onClick={() => setHelpModal('total2')}
+                  style={{
                   padding: '12px',
                   background: t.cardBg,
                   borderRadius: '10px',
                   textAlign: 'center',
-                  border: `1px solid ${t.border}`
+                  border: `1px solid ${t.border}`,
+                  cursor: 'pointer',
+                  position: 'relative'
                 }}>
+                  <div style={{ position: 'absolute', top: '6px', right: '6px', opacity: 0.5, fontSize: '10px' }}>?</div>
                   <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>
                     📊 Total2 (bez BTC)
                   </div>
@@ -1568,15 +1602,20 @@ function App() {
                 </div>
                 
                 {/* BTC Dominance */}
-                <div style={{
+                <div 
+                  onClick={() => setHelpModal('btcDominance')}
+                  style={{
                   padding: '12px',
                   background: altseasonData?.btcDominance < 45 ? `${t.positive}15` : 
                              altseasonData?.btcDominance > 55 ? `${t.negative}15` : `${t.warning}15`,
                   borderRadius: '10px',
                   textAlign: 'center',
                   border: `1px solid ${altseasonData?.btcDominance < 45 ? t.positive : 
-                          altseasonData?.btcDominance > 55 ? t.negative : t.warning}30`
+                          altseasonData?.btcDominance > 55 ? t.negative : t.warning}30`,
+                  cursor: 'pointer',
+                  position: 'relative'
                 }}>
+                  <div style={{ position: 'absolute', top: '6px', right: '6px', opacity: 0.5, fontSize: '10px' }}>?</div>
                   <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '4px' }}>
                     👑 BTC Dominance
                   </div>
@@ -1597,7 +1636,7 @@ function App() {
             </Card>
 
             {/* ============ STABLECOIN FLOWS ============ */}
-            <Card theme={theme}>
+            <Card theme={theme} helpKey="stablecoinFlows" onHelp={setHelpModal}>
               <div style={{ 
                 display: 'flex', 
                 justifyContent: 'space-between', 
