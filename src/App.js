@@ -203,7 +203,7 @@ const helpContent = {
       { condition: '0-25: Extreme Fear', signal: 'bullish', text: '🟢 Okazja zakupowa - "kupuj gdy inni się boją"' },
       { condition: '26-45: Fear', signal: 'bullish', text: '🟢 Rozważ akumulację' },
       { condition: '46-55: Neutral', signal: 'neutral', text: '🟡 Brak wyraźnego sygnału' },
-      { condition: '56-75: Greed', signal: 'bearish', text: '🟠 Ostrożność, możliwa korekta' },
+      { condition: '56-75: Greed', signal: 'warning', text: '🟠 Ostrożność, możliwa korekta' },
       { condition: '76-100: Extreme Greed', signal: 'bearish', text: '🔴 Rozważ realizację zysków' }
     ],
     tip: 'Kontrariański wskaźnik - kupuj przy strachu, sprzedawaj przy chciwości.',
@@ -370,16 +370,24 @@ const HelpModal = ({ helpKey, onClose, theme }) => {
           }}>{content.description}</p>
           <div style={{ marginBottom: '16px' }}>
             <h4 style={{ color: t.text, fontSize: '12px', fontWeight: '600', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>📖 Interpretacja</h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {content.interpretation.map((item, i) => (
-                <div key={i} style={{
-                  padding: '8px 10px', background: t.cardBg, borderRadius: '8px',
-                  borderLeft: `3px solid ${signalColor(item.signal)}`, display: 'flex', flexDirection: 'column', gap: '2px'
-                }}>
-                  <span style={{ color: t.textSecondary, fontSize: '11px', fontFamily: 'monospace' }}>{item.condition}</span>
-                  <span style={{ color: signalColor(item.signal), fontSize: '12px', fontWeight: '500' }}>{item.text}</span>
-                </div>
-              ))}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {content.interpretation.map((item, i) => {
+                const color = signalColor(item.signal);
+                return (
+                  <div key={i} style={{
+                    padding: '10px 12px',
+                    background: `${color}15`,
+                    borderRadius: '10px',
+                    borderLeft: `6px solid ${color}`,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px'
+                  }}>
+                    <span style={{ color: t.textSecondary, fontSize: '11px', fontFamily: 'monospace', fontWeight: '500' }}>{item.condition}</span>
+                    <span style={{ color: color, fontSize: '13px', fontWeight: '600' }}>{item.text}</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
           <div style={{
