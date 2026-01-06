@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, AreaChart, Area, XAxis, YAxis } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 
 // ============== API FUNCTIONS ==============
 
@@ -130,6 +130,20 @@ const TradingViewTechnicalAnalysis = ({ symbol = 'BINANCE:BTCUSDT', theme = 'dar
 
 // ============== HELP CONTENT ==============
 const helpContent = {
+  decisionScore: {
+    title: '🎯 Decision Score',
+    emoji: '🎯',
+    description: 'Zagregowany wskaźnik decyzyjny obliczany na podstawie wielu źródeł danych: sentymentu rynku, wskaźników on-chain, danych makro i derivatywów.',
+    interpretation: [
+      { condition: '70-100: AKUMULUJ', signal: 'bullish', text: '🟢 Silne warunki do kupna. Aktywnie zwiększaj pozycję.' },
+      { condition: '55-69: HOLD+', signal: 'bullish', text: '🟢 Pozytywne warunki. Trzymaj, rozważ dokupienie przy korektach.' },
+      { condition: '45-54: HOLD', signal: 'neutral', text: '🟡 Neutralne warunki. Trzymaj obecną pozycję i obserwuj.' },
+      { condition: '30-44: OSTROŻNIE', signal: 'warning', text: '🟠 Słabe warunki. Uważaj na pozycje, możliwa korekta.' },
+      { condition: '0-29: REDUKUJ', signal: 'bearish', text: '🔴 Negatywne warunki. Rozważ zmniejszenie ekspozycji.' }
+    ],
+    tip: 'Score oblicza się z: Fear & Greed, Funding Rate, M2 Supply, Stablecoin Supply, BTC Dominance i innych wskaźników. Wyższy score = lepsze warunki do kupna.',
+    source: 'Agregacja: CoinGecko, Binance, DefiLlama, FRED'
+  },
   btcPrice: {
     title: '₿ Bitcoin Price',
     emoji: '₿',
@@ -288,7 +302,12 @@ const HelpModal = ({ helpKey, onClose, theme }) => {
     border: '#e2e8f0', accent: '#3b82f6', positive: '#16a34a', negative: '#dc2626', warning: '#d97706'
   };
 
-  const signalColor = (signal) => signal === 'bullish' ? t.positive : signal === 'bearish' ? t.negative : t.warning;
+  const signalColor = (signal) => {
+    if (signal === 'bullish') return t.positive;
+    if (signal === 'bearish') return t.negative;
+    if (signal === 'warning') return t.warning;
+    return t.warning;
+  };
 
   return (
     <div onClick={onClose} style={{
@@ -361,10 +380,11 @@ const Card = ({ children, helpKey, onHelp, style, theme }) => {
     <div style={{ position: 'relative', padding: '16px', background: t.cardBg, borderRadius: '12px', border: `1px solid ${t.border}`, ...style }}>
       {helpKey && (
         <button onClick={() => onHelp(helpKey)} style={{
-          position: 'absolute', top: '8px', right: '8px', width: '22px', height: '22px',
+          position: 'absolute', top: '8px', right: '8px', width: '24px', height: '24px',
           borderRadius: '50%', background: t.helpBg, border: 'none', color: t.helpColor,
-          fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'flex',
-          alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s', opacity: 0.7
+          fontSize: '13px', fontWeight: '600', cursor: 'pointer', display: 'flex',
+          alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s', opacity: 0.7,
+          zIndex: 10
         }}>?</button>
       )}
       {children}
@@ -381,6 +401,61 @@ const LiveTag = ({ theme }) => (
     fontWeight: '600', marginLeft: '8px'
   }}>● LIVE</span>
 );
+
+// ============== DECISION SCORE GAUGE ==============
+const DecisionGauge = ({ score, signal, color, theme }) => {
+  const t = theme === 'dark' ? { bg: '#1e293b', text: '#f1f5f9', textSecondary: '#64748b' }
+    : { bg: '#e2e8f0', text: '#1e293b', textSecondary: '#64748b' };
+  
+  const percentage = score / 100;
+  const rotation = -90 + (percentage * 180);
+  
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '10px 0' }}>
+      <div style={{ position: 'relative', width: '180px', height: '100px', overflow: 'hidden' }}>
+        {/* Background arc */}
+        <div style={{
+          position: 'absolute', width: '180px', height: '180px', borderRadius: '50%',
+          background: `conic-gradient(from 180deg, ${t.bg} 0deg, ${t.bg} 180deg, transparent 180deg)`,
+          border: `12px solid ${t.bg}`
+        }} />
+        {/* Colored arc */}
+        <div style={{
+          position: 'absolute', width: '180px', height: '180px', borderRadius: '50%',
+          background: `conic-gradient(from 180deg, ${color} 0deg, ${color} ${percentage * 180}deg, transparent ${percentage * 180}deg)`,
+          clipPath: 'polygon(0 50%, 100% 50%, 100% 100%, 0 100%)',
+          transform: 'rotate(180deg)'
+        }} />
+        {/* Center cover */}
+        <div style={{
+          position: 'absolute', top: '12px', left: '12px', width: '156px', height: '156px',
+          borderRadius: '50%', background: theme === 'dark' ? '#0f172a' : '#ffffff'
+        }} />
+        {/* Score display */}
+        <div style={{
+          position: 'absolute', top: '40px', left: '0', right: '0',
+          textAlign: 'center'
+        }}>
+          <div style={{ fontSize: '42px', fontWeight: '800', color: color, lineHeight: '1' }}>{score}</div>
+        </div>
+      </div>
+      {/* Signal label */}
+      <div style={{
+        marginTop: '8px', padding: '8px 24px', borderRadius: '20px',
+        background: `${color}20`, color: color, fontWeight: '700', fontSize: '16px',
+        letterSpacing: '1px'
+      }}>
+        {signal}
+      </div>
+      {/* Scale labels */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', width: '180px', marginTop: '8px' }}>
+        <span style={{ fontSize: '10px', color: t.textSecondary }}>0</span>
+        <span style={{ fontSize: '10px', color: t.textSecondary }}>50</span>
+        <span style={{ fontSize: '10px', color: t.textSecondary }}>100</span>
+      </div>
+    </div>
+  );
+};
 
 // ============== MAIN APP ==============
 function App() {
@@ -435,24 +510,6 @@ function App() {
     return () => clearInterval(interval);
   }, [fetchAllData]);
 
-  // Calculate score
-  const calculateScore = () => {
-    let score = 50;
-    if (cgData?.fearGreed) {
-      if (cgData.fearGreed.value < 30) score += 15;
-      else if (cgData.fearGreed.value > 70) score -= 10;
-    }
-    if (binanceData?.fundingRate) {
-      if (binanceData.fundingRate.value < 0) score += 10;
-      else if (binanceData.fundingRate.value > 0.05) score -= 10;
-    }
-    if (fredData?.m2Supply?.trend === 'expanding') score += 10;
-    if (defiData?.stablecoinSupply?.change > 0) score += 5;
-    return Math.max(0, Math.min(100, score));
-  };
-
-  const score = calculateScore();
-  
   const t = theme === 'dark' ? {
     bg: '#030712', cardBg: '#0f172a', text: '#f1f5f9', textSecondary: '#64748b',
     border: '#1e293b', accent: '#3b82f6', positive: '#22c55e', negative: '#ef4444', warning: '#f59e0b'
@@ -460,6 +517,61 @@ function App() {
     bg: '#f8fafc', cardBg: '#ffffff', text: '#1e293b', textSecondary: '#64748b',
     border: '#e2e8f0', accent: '#3b82f6', positive: '#16a34a', negative: '#dc2626', warning: '#d97706'
   };
+
+  // Calculate score
+  const calculateScore = () => {
+    let score = 50;
+    
+    // Fear & Greed (contrarian)
+    if (cgData?.fearGreed) {
+      if (cgData.fearGreed.value < 25) score += 15;
+      else if (cgData.fearGreed.value < 40) score += 8;
+      else if (cgData.fearGreed.value > 75) score -= 12;
+      else if (cgData.fearGreed.value > 60) score -= 5;
+    }
+    
+    // Funding Rate
+    if (binanceData?.fundingRate) {
+      if (binanceData.fundingRate.value < -0.01) score += 10;
+      else if (binanceData.fundingRate.value < 0) score += 5;
+      else if (binanceData.fundingRate.value > 0.05) score -= 10;
+      else if (binanceData.fundingRate.value > 0.03) score -= 5;
+    }
+    
+    // M2 Supply trend
+    if (fredData?.m2Supply?.trend === 'expanding') score += 8;
+    else if (fredData?.m2Supply?.trend === 'contracting') score -= 5;
+    
+    // Stablecoin supply growth
+    if (defiData?.stablecoinSupply?.change > 3) score += 7;
+    else if (defiData?.stablecoinSupply?.change < -3) score -= 7;
+    
+    // TVL growth
+    if (defiData?.tvl?.change > 5) score += 5;
+    else if (defiData?.tvl?.change < -5) score -= 5;
+    
+    // BTC price momentum
+    if (cgData?.btcPrice?.change > 5) score += 5;
+    else if (cgData?.btcPrice?.change < -5) score -= 5;
+    
+    // Long/Short ratio (contrarian)
+    if (binanceData?.longShortRatio?.value < 0.9) score += 5;
+    else if (binanceData?.longShortRatio?.value > 1.8) score -= 5;
+    
+    return Math.max(0, Math.min(100, Math.round(score)));
+  };
+
+  const score = calculateScore();
+  
+  const getSignal = (s) => {
+    if (s >= 70) return { signal: 'AKUMULUJ', color: t.positive };
+    if (s >= 55) return { signal: 'HOLD+', color: t.positive };
+    if (s >= 45) return { signal: 'HOLD', color: t.warning };
+    if (s >= 30) return { signal: 'OSTROŻNIE', color: t.warning };
+    return { signal: 'REDUKUJ', color: t.negative };
+  };
+
+  const { signal, color: signalColor } = getSignal(score);
 
   const tabs = [
     { id: 'crypto', label: '₿ Crypto' },
@@ -469,56 +581,96 @@ function App() {
     { id: 'charts', label: '📈 Charts' }
   ];
 
-  const getScoreColor = (s) => s >= 65 ? t.positive : s >= 40 ? t.warning : t.negative;
-  const getScoreLabel = (s) => s >= 65 ? 'BULLISH' : s >= 40 ? 'NEUTRAL' : 'BEARISH';
   const formatChange = (val) => val >= 0 ? `+${val}%` : `${val}%`;
 
   return (
     <div style={{ minHeight: '100vh', background: t.bg, color: t.text, fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
       {/* Header */}
       <div style={{
-        padding: '16px 20px', borderBottom: `1px solid ${t.border}`,
+        padding: '12px 16px', borderBottom: `1px solid ${t.border}`,
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         position: 'sticky', top: 0, background: t.bg, zIndex: 100
       }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: '18px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <h1 style={{ margin: 0, fontSize: '16px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '8px' }}>
             🎯 Crypto Decision Hub
             {cgData && <LiveTag theme={theme} />}
           </h1>
-          <span style={{ fontSize: '11px', color: t.textSecondary }}>
-            {lastUpdate ? `Ostatnia aktualizacja: ${lastUpdate.toLocaleTimeString('pl-PL')}` : 'Ładowanie...'}
+          <span style={{ fontSize: '10px', color: t.textSecondary }}>
+            {lastUpdate ? `${lastUpdate.toLocaleTimeString('pl-PL')}` : 'Ładowanie...'}
           </span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{
-            padding: '8px 16px', background: `${getScoreColor(score)}20`,
-            borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '8px'
-          }}>
-            <span style={{ fontSize: '18px', fontWeight: '700', color: getScoreColor(score) }}>{score}</span>
-            <span style={{ fontSize: '11px', color: getScoreColor(score), fontWeight: '600' }}>{getScoreLabel(score)}</span>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button onClick={fetchAllData} disabled={loading} style={{
             background: t.cardBg, border: `1px solid ${t.border}`, borderRadius: '8px',
-            padding: '8px 12px', cursor: 'pointer', fontSize: '14px', color: t.text
+            padding: '6px 10px', cursor: 'pointer', fontSize: '14px', color: t.text
           }}>{loading ? '⏳' : '🔄'}</button>
           <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} style={{
             background: t.cardBg, border: `1px solid ${t.border}`, borderRadius: '8px',
-            padding: '8px 12px', cursor: 'pointer', fontSize: '14px'
+            padding: '6px 10px', cursor: 'pointer', fontSize: '14px'
           }}>{theme === 'dark' ? '☀️' : '🌙'}</button>
         </div>
       </div>
 
+      {/* Decision Score Card - EXPANDED */}
+      <div style={{ padding: '16px' }}>
+        <Card helpKey="decisionScore" onHelp={setHelpModal} theme={theme} style={{ marginBottom: '16px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <div style={{ fontSize: '14px', fontWeight: '600', marginBottom: '8px', color: t.textSecondary }}>
+              DECISION SCORE
+            </div>
+            <DecisionGauge score={score} signal={signal} color={signalColor} theme={theme} />
+            
+            {/* Score breakdown */}
+            <div style={{ 
+              width: '100%', marginTop: '16px', padding: '12px', 
+              background: theme === 'dark' ? '#1e293b' : '#f1f5f9', 
+              borderRadius: '8px' 
+            }}>
+              <div style={{ fontSize: '11px', color: t.textSecondary, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Składowe score
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px', fontSize: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: t.textSecondary }}>Fear & Greed</span>
+                  <span style={{ color: cgData?.fearGreed?.value < 40 ? t.positive : cgData?.fearGreed?.value > 60 ? t.negative : t.warning }}>
+                    {cgData?.fearGreed?.value || '---'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: t.textSecondary }}>Funding Rate</span>
+                  <span style={{ color: (binanceData?.fundingRate?.value || 0) < 0 ? t.positive : (binanceData?.fundingRate?.value || 0) > 0.03 ? t.negative : t.warning }}>
+                    {binanceData?.fundingRate?.value?.toFixed(4) || '---'}%
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: t.textSecondary }}>M2 Trend</span>
+                  <span style={{ color: fredData?.m2Supply?.trend === 'expanding' ? t.positive : t.negative }}>
+                    {fredData?.m2Supply?.trend === 'expanding' ? '📈' : '📉'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: t.textSecondary }}>Stablecoin</span>
+                  <span style={{ color: (defiData?.stablecoinSupply?.change || 0) > 0 ? t.positive : t.negative }}>
+                    {defiData?.stablecoinSupply?.change ? formatChange(defiData.stablecoinSupply.change) : '---'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Card>
+      </div>
+
       {/* API Status */}
-      <div style={{ padding: '8px 16px', display: 'flex', gap: '8px', flexWrap: 'wrap', borderBottom: `1px solid ${t.border}` }}>
+      <div style={{ padding: '0 16px 8px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
         {[
-          { name: 'CoinGecko', status: cgData },
-          { name: 'Binance', status: binanceData },
-          { name: 'DefiLlama', status: defiData },
-          { name: 'FRED', status: fredData }
+          { name: 'CG', status: cgData },
+          { name: 'BN', status: binanceData },
+          { name: 'DL', status: defiData },
+          { name: 'FR', status: fredData }
         ].map(api => (
           <span key={api.name} style={{
-            fontSize: '10px', padding: '3px 8px', borderRadius: '4px',
+            fontSize: '9px', padding: '2px 6px', borderRadius: '4px',
             background: api.status ? `${t.positive}20` : `${t.negative}20`,
             color: api.status ? t.positive : t.negative
           }}>{api.status ? '●' : '○'} {api.name}</span>
@@ -526,13 +678,13 @@ function App() {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: '8px', padding: '12px 16px', overflowX: 'auto', borderBottom: `1px solid ${t.border}` }}>
+      <div style={{ display: 'flex', gap: '6px', padding: '8px 16px', overflowX: 'auto', borderBottom: `1px solid ${t.border}` }}>
         {tabs.map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
-            padding: '8px 16px', borderRadius: '20px', border: 'none',
+            padding: '6px 14px', borderRadius: '16px', border: 'none',
             background: activeTab === tab.id ? t.accent : t.cardBg,
             color: activeTab === tab.id ? '#fff' : t.textSecondary,
-            fontSize: '13px', fontWeight: '500', cursor: 'pointer', whiteSpace: 'nowrap'
+            fontSize: '12px', fontWeight: '500', cursor: 'pointer', whiteSpace: 'nowrap'
           }}>{tab.label}</button>
         ))}
       </div>
@@ -544,81 +696,78 @@ function App() {
         {activeTab === 'crypto' && (
           <div style={{ display: 'grid', gap: '12px', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
             <Card helpKey="btcPrice" onHelp={setHelpModal} theme={theme}>
-              <div style={{ fontSize: '12px', color: t.textSecondary, marginBottom: '8px' }}>₿ Bitcoin</div>
-              <div style={{ fontSize: '22px', fontWeight: '700' }}>${cgData?.btcPrice?.value?.toLocaleString() || '---'}</div>
-              <span style={{ fontSize: '13px', color: (cgData?.btcPrice?.change || 0) >= 0 ? t.positive : t.negative }}>
+              <div style={{ fontSize: '11px', color: t.textSecondary, marginBottom: '6px' }}>₿ Bitcoin</div>
+              <div style={{ fontSize: '20px', fontWeight: '700' }}>${cgData?.btcPrice?.value?.toLocaleString() || '---'}</div>
+              <span style={{ fontSize: '12px', color: (cgData?.btcPrice?.change || 0) >= 0 ? t.positive : t.negative }}>
                 {cgData?.btcPrice?.change ? formatChange(cgData.btcPrice.change) : '---'}
               </span>
             </Card>
 
             <Card helpKey="ethPrice" onHelp={setHelpModal} theme={theme}>
-              <div style={{ fontSize: '12px', color: t.textSecondary, marginBottom: '8px' }}>◆ Ethereum</div>
-              <div style={{ fontSize: '22px', fontWeight: '700' }}>${cgData?.ethPrice?.value?.toLocaleString() || '---'}</div>
-              <span style={{ fontSize: '13px', color: (cgData?.ethPrice?.change || 0) >= 0 ? t.positive : t.negative }}>
+              <div style={{ fontSize: '11px', color: t.textSecondary, marginBottom: '6px' }}>◆ Ethereum</div>
+              <div style={{ fontSize: '20px', fontWeight: '700' }}>${cgData?.ethPrice?.value?.toLocaleString() || '---'}</div>
+              <span style={{ fontSize: '12px', color: (cgData?.ethPrice?.change || 0) >= 0 ? t.positive : t.negative }}>
                 {cgData?.ethPrice?.change ? formatChange(cgData.ethPrice.change) : '---'}
               </span>
             </Card>
 
             <Card helpKey="fearGreed" onHelp={setHelpModal} theme={theme}>
-              <div style={{ fontSize: '12px', color: t.textSecondary, marginBottom: '8px' }}>😱 Fear & Greed</div>
-              <div style={{ fontSize: '22px', fontWeight: '700', color: cgData?.fearGreed?.value > 60 ? t.warning : cgData?.fearGreed?.value < 40 ? t.positive : t.text }}>
+              <div style={{ fontSize: '11px', color: t.textSecondary, marginBottom: '6px' }}>😱 Fear & Greed</div>
+              <div style={{ fontSize: '20px', fontWeight: '700', color: cgData?.fearGreed?.value > 60 ? t.warning : cgData?.fearGreed?.value < 40 ? t.positive : t.text }}>
                 {cgData?.fearGreed?.value || '---'}
               </div>
-              <span style={{ fontSize: '12px', color: t.textSecondary }}>{cgData?.fearGreed?.label || '---'}</span>
+              <span style={{ fontSize: '11px', color: t.textSecondary }}>{cgData?.fearGreed?.label || '---'}</span>
             </Card>
 
             <Card helpKey="btcDominance" onHelp={setHelpModal} theme={theme}>
-              <div style={{ fontSize: '12px', color: t.textSecondary, marginBottom: '8px' }}>👑 BTC Dominance</div>
-              <div style={{ fontSize: '22px', fontWeight: '700' }}>{cgData?.btcDominance?.value || '---'}%</div>
+              <div style={{ fontSize: '11px', color: t.textSecondary, marginBottom: '6px' }}>👑 BTC Dominance</div>
+              <div style={{ fontSize: '20px', fontWeight: '700' }}>{cgData?.btcDominance?.value || '---'}%</div>
             </Card>
 
             <Card theme={theme}>
-              <div style={{ fontSize: '12px', color: t.textSecondary, marginBottom: '8px' }}>◎ Solana</div>
-              <div style={{ fontSize: '22px', fontWeight: '700' }}>${cgData?.solPrice?.value || '---'}</div>
-              <span style={{ fontSize: '13px', color: (cgData?.solPrice?.change || 0) >= 0 ? t.positive : t.negative }}>
+              <div style={{ fontSize: '11px', color: t.textSecondary, marginBottom: '6px' }}>◎ Solana</div>
+              <div style={{ fontSize: '20px', fontWeight: '700' }}>${cgData?.solPrice?.value || '---'}</div>
+              <span style={{ fontSize: '12px', color: (cgData?.solPrice?.change || 0) >= 0 ? t.positive : t.negative }}>
                 {cgData?.solPrice?.change ? formatChange(cgData.solPrice.change) : '---'}
               </span>
             </Card>
 
             <Card theme={theme}>
-              <div style={{ fontSize: '12px', color: t.textSecondary, marginBottom: '8px' }}>📊 Volume 24h</div>
-              <div style={{ fontSize: '22px', fontWeight: '700' }}>${cgData?.volume24h || '---'}B</div>
+              <div style={{ fontSize: '11px', color: t.textSecondary, marginBottom: '6px' }}>📊 Volume 24h</div>
+              <div style={{ fontSize: '20px', fontWeight: '700' }}>${cgData?.volume24h || '---'}B</div>
             </Card>
           </div>
         )}
 
         {/* MACRO TAB */}
         {activeTab === 'macro' && (
-          <div style={{ display: 'grid', gap: '12px', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+          <div style={{ display: 'grid', gap: '12px', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
             <Card helpKey="m2Supply" onHelp={setHelpModal} theme={theme}>
-              <div style={{ fontSize: '12px', color: t.textSecondary, marginBottom: '8px' }}>🏦 M2 Supply</div>
-              <div style={{ fontSize: '22px', fontWeight: '700' }}>${fredData?.m2Supply?.value || '---'}T</div>
-              <span style={{ fontSize: '13px', color: (fredData?.m2Supply?.change || 0) >= 0 ? t.positive : t.negative }}>
+              <div style={{ fontSize: '11px', color: t.textSecondary, marginBottom: '6px' }}>🏦 M2 Supply</div>
+              <div style={{ fontSize: '20px', fontWeight: '700' }}>${fredData?.m2Supply?.value || '---'}T</div>
+              <span style={{ fontSize: '12px', color: (fredData?.m2Supply?.change || 0) >= 0 ? t.positive : t.negative }}>
                 {fredData?.m2Supply?.change ? `${formatChange(fredData.m2Supply.change)} YoY` : '---'}
               </span>
               {fredData?.m2Supply?.trend && (
-                <div style={{ marginTop: '8px', padding: '6px 10px', background: `${t.positive}20`, borderRadius: '6px', fontSize: '11px', color: t.positive, fontWeight: '500' }}>
-                  📈 {fredData.m2Supply.trend === 'expanding' ? 'Ekspansja = BULLISH' : 'Kontrakcja = BEARISH'}
+                <div style={{ marginTop: '6px', padding: '4px 8px', background: `${t.positive}20`, borderRadius: '4px', fontSize: '10px', color: t.positive, fontWeight: '500' }}>
+                  {fredData.m2Supply.trend === 'expanding' ? '📈 Ekspansja' : '📉 Kontrakcja'}
                 </div>
               )}
             </Card>
 
             <Card helpKey="dxy" onHelp={setHelpModal} theme={theme}>
-              <div style={{ fontSize: '12px', color: t.textSecondary, marginBottom: '8px' }}>💲 DXY Index</div>
-              <div style={{ fontSize: '22px', fontWeight: '700' }}>{mockData.dxy.value}</div>
-              <span style={{ fontSize: '13px', color: mockData.dxy.change < 0 ? t.positive : t.negative }}>
+              <div style={{ fontSize: '11px', color: t.textSecondary, marginBottom: '6px' }}>💲 DXY Index</div>
+              <div style={{ fontSize: '20px', fontWeight: '700' }}>{mockData.dxy.value}</div>
+              <span style={{ fontSize: '12px', color: mockData.dxy.change < 0 ? t.positive : t.negative }}>
                 {formatChange(mockData.dxy.change)}
               </span>
-              <div style={{ marginTop: '8px', padding: '6px 10px', background: `${t.positive}20`, borderRadius: '6px', fontSize: '11px', color: t.positive, fontWeight: '500' }}>
-                📉 Słaby dolar = BULLISH dla krypto
-              </div>
             </Card>
 
             <Card theme={theme} style={{ gridColumn: 'span 2' }}>
-              <div style={{ fontSize: '14px', fontWeight: '600', marginBottom: '12px' }}>📊 Korelacja M2 vs BTC</div>
-              <p style={{ fontSize: '13px', color: t.textSecondary, lineHeight: '1.6', margin: 0 }}>
+              <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '10px' }}>📊 Korelacja M2 vs BTC</div>
+              <p style={{ fontSize: '12px', color: t.textSecondary, lineHeight: '1.5', margin: 0 }}>
                 Wzrost podaży M2 historycznie koreluje z wzrostami BTC z opóźnieniem ~3-6 miesięcy.
-                Obecny trend M2: <strong style={{ color: fredData?.m2Supply?.trend === 'expanding' ? t.positive : t.negative }}>
+                Obecny trend: <strong style={{ color: fredData?.m2Supply?.trend === 'expanding' ? t.positive : t.negative }}>
                   {fredData?.m2Supply?.trend === 'expanding' ? '📈 Ekspansja' : '📉 Kontrakcja'}
                 </strong>
               </p>
@@ -629,19 +778,19 @@ function App() {
         {/* DEFI TAB */}
         {activeTab === 'defi' && (
           <div style={{ display: 'grid', gap: '12px' }}>
-            <div style={{ display: 'grid', gap: '12px', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+            <div style={{ display: 'grid', gap: '12px', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
               <Card helpKey="tvl" onHelp={setHelpModal} theme={theme}>
-                <div style={{ fontSize: '12px', color: t.textSecondary, marginBottom: '8px' }}>🔒 Total TVL</div>
-                <div style={{ fontSize: '22px', fontWeight: '700' }}>${defiData?.tvl?.value || '---'}B</div>
-                <span style={{ fontSize: '13px', color: (defiData?.tvl?.change || 0) >= 0 ? t.positive : t.negative }}>
+                <div style={{ fontSize: '11px', color: t.textSecondary, marginBottom: '6px' }}>🔒 Total TVL</div>
+                <div style={{ fontSize: '20px', fontWeight: '700' }}>${defiData?.tvl?.value || '---'}B</div>
+                <span style={{ fontSize: '12px', color: (defiData?.tvl?.change || 0) >= 0 ? t.positive : t.negative }}>
                   {defiData?.tvl?.change ? formatChange(defiData.tvl.change) : '---'} (7d)
                 </span>
               </Card>
 
               <Card helpKey="stablecoinSupply" onHelp={setHelpModal} theme={theme}>
-                <div style={{ fontSize: '12px', color: t.textSecondary, marginBottom: '8px' }}>💵 Stablecoin Supply</div>
-                <div style={{ fontSize: '22px', fontWeight: '700' }}>${defiData?.stablecoinSupply?.value || '---'}B</div>
-                <span style={{ fontSize: '13px', color: (defiData?.stablecoinSupply?.change || 0) >= 0 ? t.positive : t.negative }}>
+                <div style={{ fontSize: '11px', color: t.textSecondary, marginBottom: '6px' }}>💵 Stablecoin</div>
+                <div style={{ fontSize: '20px', fontWeight: '700' }}>${defiData?.stablecoinSupply?.value || '---'}B</div>
+                <span style={{ fontSize: '12px', color: (defiData?.stablecoinSupply?.change || 0) >= 0 ? t.positive : t.negative }}>
                   {defiData?.stablecoinSupply?.change ? formatChange(defiData.stablecoinSupply.change) : '---'} (30d)
                 </span>
               </Card>
@@ -649,14 +798,14 @@ function App() {
 
             {defiData?.topProtocols && (
               <Card theme={theme}>
-                <div style={{ fontSize: '14px', fontWeight: '600', marginBottom: '12px' }}>🏆 Top 5 Protokołów (TVL)</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '10px' }}>🏆 Top 5 Protokołów</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   {defiData.topProtocols.map((p, i) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px', background: t.bg, borderRadius: '8px' }}>
-                      <span style={{ fontWeight: '500' }}>{i + 1}. {p.name}</span>
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px', background: t.bg, borderRadius: '6px' }}>
+                      <span style={{ fontWeight: '500', fontSize: '12px' }}>{i + 1}. {p.name}</span>
                       <div style={{ textAlign: 'right' }}>
-                        <span style={{ fontWeight: '600' }}>${(p.tvl / 1e9).toFixed(2)}B</span>
-                        <span style={{ fontSize: '11px', marginLeft: '8px', color: p.change >= 0 ? t.positive : t.negative }}>
+                        <span style={{ fontWeight: '600', fontSize: '12px' }}>${(p.tvl / 1e9).toFixed(2)}B</span>
+                        <span style={{ fontSize: '10px', marginLeft: '6px', color: p.change >= 0 ? t.positive : t.negative }}>
                           {p.change >= 0 ? '+' : ''}{p.change?.toFixed(1)}%
                         </span>
                       </div>
@@ -670,36 +819,36 @@ function App() {
 
         {/* DERIVATIVES TAB */}
         {activeTab === 'derivatives' && (
-          <div style={{ display: 'grid', gap: '12px', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+          <div style={{ display: 'grid', gap: '12px', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
             <Card helpKey="fundingRate" onHelp={setHelpModal} theme={theme}>
-              <div style={{ fontSize: '12px', color: t.textSecondary, marginBottom: '8px' }}>💸 Funding Rate</div>
-              <div style={{ fontSize: '22px', fontWeight: '700', color: (binanceData?.fundingRate?.value || 0) > 0.03 ? t.warning : t.text }}>
+              <div style={{ fontSize: '11px', color: t.textSecondary, marginBottom: '6px' }}>💸 Funding Rate</div>
+              <div style={{ fontSize: '20px', fontWeight: '700', color: (binanceData?.fundingRate?.value || 0) > 0.03 ? t.warning : t.text }}>
                 {binanceData?.fundingRate?.value?.toFixed(4) || '---'}%
               </div>
-              <span style={{ fontSize: '12px', color: t.textSecondary }}>BTC Perpetual</span>
+              <span style={{ fontSize: '10px', color: t.textSecondary }}>BTC Perpetual</span>
             </Card>
 
             <Card helpKey="openInterest" onHelp={setHelpModal} theme={theme}>
-              <div style={{ fontSize: '12px', color: t.textSecondary, marginBottom: '8px' }}>📊 Open Interest</div>
-              <div style={{ fontSize: '22px', fontWeight: '700' }}>${binanceData?.openInterest?.value || '---'}B</div>
-              <span style={{ fontSize: '12px', color: t.textSecondary }}>BTC Futures</span>
+              <div style={{ fontSize: '11px', color: t.textSecondary, marginBottom: '6px' }}>📊 Open Interest</div>
+              <div style={{ fontSize: '20px', fontWeight: '700' }}>${binanceData?.openInterest?.value || '---'}B</div>
+              <span style={{ fontSize: '10px', color: t.textSecondary }}>BTC Futures</span>
             </Card>
 
             <Card helpKey="longShortRatio" onHelp={setHelpModal} theme={theme}>
-              <div style={{ fontSize: '12px', color: t.textSecondary, marginBottom: '8px' }}>⚖️ Long/Short Ratio</div>
-              <div style={{ fontSize: '22px', fontWeight: '700' }}>{binanceData?.longShortRatio?.value || '---'}</div>
-              <span style={{ fontSize: '12px', color: (binanceData?.longShortRatio?.value || 1) > 1.5 ? t.warning : t.textSecondary }}>
+              <div style={{ fontSize: '11px', color: t.textSecondary, marginBottom: '6px' }}>⚖️ Long/Short</div>
+              <div style={{ fontSize: '20px', fontWeight: '700' }}>{binanceData?.longShortRatio?.value || '---'}</div>
+              <span style={{ fontSize: '10px', color: (binanceData?.longShortRatio?.value || 1) > 1.5 ? t.warning : t.textSecondary }}>
                 {(binanceData?.longShortRatio?.value || 1) > 1.5 ? 'Więcej longów ⚠️' : 'Zrównoważony'}
               </span>
             </Card>
 
             <Card theme={theme}>
-              <div style={{ fontSize: '12px', color: t.textSecondary, marginBottom: '8px' }}>💥 Liquidations 24h</div>
-              <div style={{ fontSize: '22px', fontWeight: '700' }}>${mockData.liquidations.total}M</div>
-              <div style={{ fontSize: '11px', marginTop: '4px' }}>
-                <span style={{ color: t.positive }}>Long: ${mockData.liquidations.long}M</span>
+              <div style={{ fontSize: '11px', color: t.textSecondary, marginBottom: '6px' }}>💥 Liquidations 24h</div>
+              <div style={{ fontSize: '20px', fontWeight: '700' }}>${mockData.liquidations.total}M</div>
+              <div style={{ fontSize: '10px', marginTop: '4px' }}>
+                <span style={{ color: t.positive }}>L: ${mockData.liquidations.long}M</span>
                 {' | '}
-                <span style={{ color: t.negative }}>Short: ${mockData.liquidations.short}M</span>
+                <span style={{ color: t.negative }}>S: ${mockData.liquidations.short}M</span>
               </div>
             </Card>
           </div>
@@ -707,59 +856,55 @@ function App() {
 
         {/* CHARTS TAB */}
         {activeTab === 'charts' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {/* Symbol selector */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <Card theme={theme}>
-              <div style={{ fontSize: '14px', fontWeight: '600', marginBottom: '12px' }}>🎯 Wybierz parę</div>
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '10px' }}>🎯 Wybierz parę</div>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                 {['BINANCE:BTCUSDT', 'BINANCE:ETHUSDT', 'BINANCE:SOLUSDT', 'CRYPTOCAP:TOTAL', 'CRYPTOCAP:BTC.D'].map(s => (
                   <button key={s} onClick={() => setTvSymbol(s)} style={{
-                    padding: '8px 14px', borderRadius: '8px', border: 'none',
+                    padding: '6px 12px', borderRadius: '6px', border: 'none',
                     background: tvSymbol === s ? t.accent : t.bg,
                     color: tvSymbol === s ? '#fff' : t.textSecondary,
-                    fontSize: '12px', fontWeight: '500', cursor: 'pointer'
+                    fontSize: '11px', fontWeight: '500', cursor: 'pointer'
                   }}>{s.split(':')[1]}</button>
                 ))}
               </div>
             </Card>
 
-            {/* View toggle */}
             <Card theme={theme}>
-              <div style={{ fontSize: '14px', fontWeight: '600', marginBottom: '12px' }}>👁️ Widok</div>
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '10px' }}>👁️ Widok</div>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                 {[
-                  { id: 'analysis', label: '📊 Analiza Techniczna' },
+                  { id: 'analysis', label: '📊 Analiza' },
                   { id: 'chart', label: '📈 Wykres' },
                   { id: 'both', label: '🔀 Oba' }
                 ].map(v => (
                   <button key={v.id} onClick={() => setChartView(v.id)} style={{
-                    padding: '8px 14px', borderRadius: '8px', border: 'none',
+                    padding: '6px 12px', borderRadius: '6px', border: 'none',
                     background: chartView === v.id ? t.accent : t.bg,
                     color: chartView === v.id ? '#fff' : t.textSecondary,
-                    fontSize: '12px', fontWeight: '500', cursor: 'pointer'
+                    fontSize: '11px', fontWeight: '500', cursor: 'pointer'
                   }}>{v.label}</button>
                 ))}
               </div>
             </Card>
 
-            {/* Technical Analysis */}
             {(chartView === 'analysis' || chartView === 'both') && (
               <Card helpKey="technicalAnalysis" onHelp={setHelpModal} theme={theme}>
-                <div style={{ fontSize: '14px', fontWeight: '600', marginBottom: '4px', display: 'flex', alignItems: 'center' }}>
+                <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '4px', display: 'flex', alignItems: 'center' }}>
                   📊 Analiza Techniczna - {tvSymbol.split(':')[1]}
                   <LiveTag theme={theme} />
                 </div>
-                <div style={{ fontSize: '11px', color: t.textSecondary, marginBottom: '12px' }}>
-                  Oscylatory • Moving Averages • Sygnały Buy/Sell
+                <div style={{ fontSize: '10px', color: t.textSecondary, marginBottom: '10px' }}>
+                  Oscylatory • Moving Averages • Buy/Sell
                 </div>
                 <TradingViewTechnicalAnalysis symbol={tvSymbol} theme={theme} interval={taInterval} />
               </Card>
             )}
 
-            {/* Chart */}
             {(chartView === 'chart' || chartView === 'both') && (
               <Card theme={theme}>
-                <div style={{ fontSize: '14px', fontWeight: '600', marginBottom: '12px' }}>
+                <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '10px' }}>
                   📈 Wykres - {tvSymbol.split(':')[1]}
                 </div>
                 <TradingViewChart symbol={tvSymbol} theme={theme} />
@@ -769,10 +914,8 @@ function App() {
         )}
 
         {/* Footer */}
-        <div style={{ textAlign: 'center', padding: '20px', color: t.textSecondary, fontSize: '11px' }}>
-          💡 Kliknij <strong>?</strong> przy kafelku, aby zobaczyć szczegółowy opis wskaźnika
-          <br />
-          Dane: CoinGecko • Binance • DefiLlama • FRED • TradingView | Auto-refresh: 60s
+        <div style={{ textAlign: 'center', padding: '16px', color: t.textSecondary, fontSize: '10px' }}>
+          💡 Kliknij <strong>?</strong> aby zobaczyć opis wskaźnika | Auto-refresh: 60s
         </div>
       </div>
 
