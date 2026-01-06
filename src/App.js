@@ -690,39 +690,131 @@ function App() {
         {/* STRUCTURE TAB */}
         {activeTab === 'structure' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {/* Market Breadth */}
             {msData?.marketBreadth && (
               <Card theme={theme}>
-                <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px' }}>📊 Market Breadth ({msData.source})</div>
+                <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px' }}>📊 Market Breadth ({msData.source}) <span style={{ fontSize: '9px', color: t.textSecondary }}>({msData.marketBreadth.total} par)</span></div>
                 <div style={{ display: 'flex', justifyContent: 'space-around', textAlign: 'center' }}>
-                  <div><div style={{ fontSize: '16px', fontWeight: '700', color: t.positive }}>{msData.marketBreadth.gainers}</div><div style={{ fontSize: '9px', color: t.textSecondary }}>Gainers</div></div>
-                  <div><div style={{ fontSize: '16px', fontWeight: '700', color: t.negative }}>{msData.marketBreadth.losers}</div><div style={{ fontSize: '9px', color: t.textSecondary }}>Losers</div></div>
-                  <div><div style={{ fontSize: '16px', fontWeight: '700', color: t.accent }}>{msData.marketBreadth.ratio}%</div><div style={{ fontSize: '9px', color: t.textSecondary }}>Bullish</div></div>
+                  <div><div style={{ fontSize: '18px', fontWeight: '700', color: t.positive }}>{msData.marketBreadth.gainers}</div><div style={{ fontSize: '9px', color: t.textSecondary }}>Gainers</div></div>
+                  <div><div style={{ fontSize: '18px', fontWeight: '700', color: t.negative }}>{msData.marketBreadth.losers}</div><div style={{ fontSize: '9px', color: t.textSecondary }}>Losers</div></div>
+                  <div><div style={{ fontSize: '18px', fontWeight: '700', color: parseInt(msData.marketBreadth.ratio) > 50 ? t.positive : t.negative }}>{msData.marketBreadth.ratio}%</div><div style={{ fontSize: '9px', color: t.textSecondary }}>Bullish</div></div>
+                </div>
+                <div style={{ marginTop: '8px', height: '6px', background: t.bg, borderRadius: '3px', overflow: 'hidden', display: 'flex' }}>
+                  <div style={{ width: `${msData.marketBreadth.ratio}%`, background: t.positive, transition: 'width 0.3s' }}></div>
+                  <div style={{ width: `${100 - msData.marketBreadth.ratio}%`, background: t.negative, transition: 'width 0.3s' }}></div>
                 </div>
               </Card>
             )}
+
+            {/* Top Gainers */}
             {msData?.topGainers && (
               <Card theme={theme}>
-                <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px', color: t.positive }}>🚀 Top 5 Gainers 24h</div>
+                <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px', color: t.positive }}>🚀 Top Gainers 24h</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                  {msData.topGainers.slice(0, 5).map((coin, i) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px', background: t.bg, borderRadius: '6px' }}>
-                      <span style={{ fontWeight: '600', fontSize: '11px' }}>{coin.name}</span>
-                      <span style={{ color: t.positive, fontWeight: '600', fontSize: '11px' }}>+{coin.change24h}%</span>
+                  {msData.topGainers.slice(0, 10).map((coin, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', background: t.bg, borderRadius: '6px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '10px', color: t.textSecondary, width: '16px' }}>{i + 1}.</span>
+                        <span style={{ fontWeight: '600', fontSize: '11px' }}>{coin.name}</span>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <span style={{ color: t.positive, fontWeight: '700', fontSize: '12px' }}>+{coin.change24h}%</span>
+                        <div style={{ fontSize: '9px', color: t.textSecondary }}>${coin.price < 1 ? coin.price.toFixed(6) : coin.price.toFixed(2)}</div>
+                      </div>
                     </div>
                   ))}
                 </div>
               </Card>
             )}
+
+            {/* Top Losers */}
             {msData?.topLosers && (
               <Card theme={theme}>
-                <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px', color: t.negative }}>📉 Top 5 Losers 24h</div>
+                <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px', color: t.negative }}>📉 Top Losers 24h</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                  {msData.topLosers.slice(0, 5).map((coin, i) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px', background: t.bg, borderRadius: '6px' }}>
-                      <span style={{ fontWeight: '600', fontSize: '11px' }}>{coin.name}</span>
-                      <span style={{ color: t.negative, fontWeight: '600', fontSize: '11px' }}>{coin.change24h}%</span>
+                  {msData.topLosers.slice(0, 10).map((coin, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', background: t.bg, borderRadius: '6px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '10px', color: t.textSecondary, width: '16px' }}>{i + 1}.</span>
+                        <span style={{ fontWeight: '600', fontSize: '11px' }}>{coin.name}</span>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <span style={{ color: t.negative, fontWeight: '700', fontSize: '12px' }}>{coin.change24h}%</span>
+                        <div style={{ fontSize: '9px', color: t.textSecondary }}>${coin.price < 1 ? coin.price.toFixed(6) : coin.price.toFixed(2)}</div>
+                      </div>
                     </div>
                   ))}
+                </div>
+              </Card>
+            )}
+
+            {/* Altseason Indicators */}
+            {altseasonData && (
+              <Card theme={theme}>
+                <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '10px' }}>🌊 Altseason Indicators <LiveTag theme={theme} /></div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+                  <div style={{ padding: '10px', background: t.bg, borderRadius: '8px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '9px', color: t.textSecondary, marginBottom: '4px' }}>Altseason Index</div>
+                    <div style={{ fontSize: '20px', fontWeight: '700', color: altseasonData.altseasonIndex > 50 ? t.positive : altseasonData.altseasonIndex < 40 ? t.negative : t.warning }}>{altseasonData.altseasonIndex}</div>
+                    <div style={{ fontSize: '8px', color: t.textSecondary }}>{altseasonData.altseasonIndex > 75 ? 'ALTSEASON' : altseasonData.altseasonIndex > 50 ? 'Alty rosną' : altseasonData.altseasonIndex > 40 ? 'Neutralny' : 'BTC Season'}</div>
+                  </div>
+                  <div style={{ padding: '10px', background: t.bg, borderRadius: '8px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '9px', color: t.textSecondary, marginBottom: '4px' }}>ETH/BTC Ratio</div>
+                    <div style={{ fontSize: '20px', fontWeight: '700', color: altseasonData.ethBtcRatio > 0.05 ? t.positive : altseasonData.ethBtcRatio < 0.035 ? t.negative : t.warning }}>{altseasonData.ethBtcRatio}</div>
+                    <div style={{ fontSize: '8px', color: t.textSecondary }}>{altseasonData.ethBtcRatio > 0.05 ? 'ETH silny' : altseasonData.ethBtcRatio < 0.035 ? 'BTC dominuje' : 'Neutralny'}</div>
+                  </div>
+                  <div style={{ padding: '10px', background: t.bg, borderRadius: '8px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '9px', color: t.textSecondary, marginBottom: '4px' }}>Total2 (bez BTC)</div>
+                    <div style={{ fontSize: '20px', fontWeight: '700' }}>${altseasonData.total2}T</div>
+                    <div style={{ fontSize: '8px', color: t.textSecondary }}>Market Cap altów</div>
+                  </div>
+                  <div style={{ padding: '10px', background: t.bg, borderRadius: '8px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '9px', color: t.textSecondary, marginBottom: '4px' }}>BTC Dominance</div>
+                    <div style={{ fontSize: '20px', fontWeight: '700', color: altseasonData.btcDominance > 55 ? t.negative : altseasonData.btcDominance < 45 ? t.positive : t.warning }}>{altseasonData.btcDominance}%</div>
+                    <div style={{ fontSize: '8px', color: t.textSecondary }}>{altseasonData.btcDominance > 55 ? 'BTC Season' : altseasonData.btcDominance < 45 ? 'Altseason' : 'Zrównoważony'}</div>
+                  </div>
+                </div>
+              </Card>
+            )}
+
+            {/* Stablecoin Flows */}
+            {altseasonData?.stablecoins && (
+              <Card theme={theme}>
+                <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '10px' }}>💵 Stablecoin Flows (7d) <LiveTag theme={theme} /></div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+                  <div style={{ padding: '10px', background: t.bg, borderRadius: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: '600' }}>🟢 USDT</span>
+                      <span style={{ fontSize: '10px', color: altseasonData.stablecoins.usdt.change7d >= 0 ? t.positive : t.negative, fontWeight: '600' }}>
+                        {altseasonData.stablecoins.usdt.change7d >= 0 ? '+' : ''}{altseasonData.stablecoins.usdt.change7d}%
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '16px', fontWeight: '700' }}>${altseasonData.stablecoins.usdt.mcap}B</div>
+                  </div>
+                  <div style={{ padding: '10px', background: t.bg, borderRadius: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: '600' }}>🔵 USDC</span>
+                      <span style={{ fontSize: '10px', color: altseasonData.stablecoins.usdc.change7d >= 0 ? t.positive : t.negative, fontWeight: '600' }}>
+                        {altseasonData.stablecoins.usdc.change7d >= 0 ? '+' : ''}{altseasonData.stablecoins.usdc.change7d}%
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '16px', fontWeight: '700' }}>${altseasonData.stablecoins.usdc.mcap}B</div>
+                  </div>
+                  <div style={{ padding: '10px', background: t.bg, borderRadius: '8px' }}>
+                    <div style={{ fontSize: '9px', color: t.textSecondary, marginBottom: '4px' }}>Total (USDT+USDC)</div>
+                    <div style={{ fontSize: '16px', fontWeight: '700' }}>${altseasonData.stablecoins.total}B</div>
+                  </div>
+                  <div style={{ padding: '10px', background: t.bg, borderRadius: '8px' }}>
+                    <div style={{ fontSize: '9px', color: t.textSecondary, marginBottom: '4px' }}>USDT Dominance</div>
+                    <div style={{ fontSize: '16px', fontWeight: '700' }}>{altseasonData.stablecoins.usdtDominance}%</div>
+                  </div>
+                </div>
+                <div style={{ marginTop: '8px', padding: '8px', background: `${t.accent}10`, borderRadius: '6px', fontSize: '10px', color: t.textSecondary }}>
+                  💡 {altseasonData.stablecoins.usdt.change7d + altseasonData.stablecoins.usdc.change7d > 1 
+                    ? '🟢 Kapitał napływa do ekosystemu' 
+                    : altseasonData.stablecoins.usdt.change7d + altseasonData.stablecoins.usdc.change7d < -1 
+                    ? '🔴 Kapitał odpływa z ekosystemu' 
+                    : '🟡 Stabilny przepływ kapitału'}
                 </div>
               </Card>
             )}
