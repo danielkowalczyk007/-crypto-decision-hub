@@ -578,7 +578,7 @@ function App() {
   
   // Charts state
   const [tvSymbol, setTvSymbol] = useState('BINANCE:BTCUSDT');
-  const [chartView, setChartView] = useState('both');
+  const [chartView, setChartView] = useState('analysis');
   const [taInterval, setTaInterval] = useState('1D');
   
   // ============== ALERTS STATE ==============
@@ -877,15 +877,15 @@ function App() {
         </Card>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs - 2 rows on mobile */}
       <div style={{ padding: '0 12px', marginBottom: '10px' }}>
-        <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', paddingBottom: '5px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px' }}>
           {tabs.map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
-              padding: '7px 12px', borderRadius: '8px', border: 'none', whiteSpace: 'nowrap',
+              padding: '8px 6px', borderRadius: '8px', border: 'none', whiteSpace: 'nowrap',
               background: activeTab === tab.id ? t.accent : t.cardBg,
               color: activeTab === tab.id ? '#fff' : t.textSecondary,
-              fontSize: '11px', fontWeight: '600', cursor: 'pointer'
+              fontSize: '10px', fontWeight: '600', cursor: 'pointer'
             }}>{tab.label}</button>
           ))}
         </div>
@@ -1137,7 +1137,7 @@ function App() {
           </div>
         )}
 
-        {/* CHARTS TAB */}
+        {/* CHARTS TAB - Analysis first, then Chart */}
         {activeTab === 'charts' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <Card theme={theme}>
@@ -1147,12 +1147,11 @@ function App() {
                 ))}
               </div>
               <div style={{ display: 'flex', gap: '6px', marginBottom: '10px' }}>
-                {['chart', 'analysis', 'both'].map(view => (
+                {['analysis', 'chart', 'both'].map(view => (
                   <button key={view} onClick={() => setChartView(view)} style={{ flex: 1, padding: '6px', borderRadius: '6px', border: chartView === view ? `2px solid ${t.accent}` : `1px solid ${t.border}`, background: chartView === view ? `${t.accent}20` : t.bg, color: chartView === view ? t.accent : t.textSecondary, fontSize: '10px', fontWeight: '600', cursor: 'pointer' }}>{view === 'chart' ? '📈 Chart' : view === 'analysis' ? '📊 Analysis' : '📈📊 Both'}</button>
                 ))}
               </div>
             </Card>
-            {(chartView === 'chart' || chartView === 'both') && <TradingViewChart symbol={tvSymbol} theme={theme} />}
             {(chartView === 'analysis' || chartView === 'both') && (
               <Card helpKey="technicalAnalysis" onHelp={setHelpModal} theme={theme}>
                 <div style={{ display: 'flex', gap: '4px', marginBottom: '10px', flexWrap: 'wrap' }}>
@@ -1163,6 +1162,7 @@ function App() {
                 <TradingViewTechnicalAnalysis symbol={tvSymbol} interval={taInterval} theme={theme} />
               </Card>
             )}
+            {(chartView === 'chart' || chartView === 'both') && <TradingViewChart symbol={tvSymbol} theme={theme} />}
           </div>
         )}
 
@@ -1339,7 +1339,7 @@ function App() {
 
       {/* Footer */}
       <div style={{ textAlign: 'center', padding: '14px', color: t.textSecondary, fontSize: '9px', position: 'fixed', bottom: 0, left: 0, right: 0, background: t.bg, borderTop: `1px solid ${t.border}` }}>
-        💡 v3.2 Compact Scores | Auto-refresh: 60s
+        💡 v3.3 Grid Tabs & Charts Order | Auto-refresh: 60s
       </div>
 
       {/* Help Modal */}
