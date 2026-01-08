@@ -415,7 +415,7 @@ const ApiStatusBadge = ({ status, label, theme }) => {
   return <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 6px', borderRadius: '4px', background: `${color}18`, fontSize: '9px', fontWeight: '600', color }}><span style={{ width: '5px', height: '5px', borderRadius: '50%', background: color, animation: status === 'live' ? 'pulse 2s infinite' : 'none' }} />{label}</span>;
 };
 
-// ============== IMPROVED SCORE GAUGE ==============
+// ============== COMPACT SCORE GAUGE ==============
 const MiniScoreGauge = ({ score, label, icon, subtitle, onHelp, theme }) => {
   const isDark = theme === 'dark';
   const t = isDark ? { text: '#f1f5f9', textSecondary: '#64748b' } : { text: '#1e293b', textSecondary: '#64748b' };
@@ -424,18 +424,18 @@ const MiniScoreGauge = ({ score, label, icon, subtitle, onHelp, theme }) => {
   const needleAngle = -90 + (score / 100) * 180;
   const gaugeColors = ['#ef4444', '#f97316', '#eab308', '#84cc16', '#22c55e'];
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '100px', flex: '1 1 100px', maxWidth: '130px', padding: '8px', background: isDark ? 'rgba(30,41,59,0.5)' : 'rgba(241,245,249,0.7)', borderRadius: '12px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: '4px' }}>
-        <span style={{ fontSize: '11px', fontWeight: '700', color: t.text }}>{icon} {label}</span>
-        <button onClick={onHelp} style={{ width: '18px', height: '18px', borderRadius: '50%', background: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', border: 'none', color: t.textSecondary, fontSize: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>?</button>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '31%', minWidth: '95px', padding: '6px 4px', background: isDark ? 'rgba(30,41,59,0.5)' : 'rgba(241,245,249,0.7)', borderRadius: '10px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: '2px', padding: '0 2px' }}>
+        <span style={{ fontSize: '10px', fontWeight: '700', color: t.text }}>{icon} {label}</span>
+        <button onClick={onHelp} style={{ width: '16px', height: '16px', borderRadius: '50%', background: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', border: 'none', color: t.textSecondary, fontSize: '9px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>?</button>
       </div>
-      <svg viewBox="0 0 100 55" style={{ width: '100%', height: '55px' }}>
-        {gaugeColors.map((c, i) => { const startAngle = 180 + (i * 36); const endAngle = 180 + ((i + 1) * 36); const startRad = (startAngle * Math.PI) / 180; const endRad = (endAngle * Math.PI) / 180; const cx = 50, cy = 50, r = 40; return <path key={i} d={`M ${cx + r * Math.cos(startRad)} ${cy + r * Math.sin(startRad)} A ${r} ${r} 0 0 1 ${cx + r * Math.cos(endRad)} ${cy + r * Math.sin(endRad)}`} fill="none" stroke={c} strokeWidth="10" strokeLinecap="round" opacity={isDark ? 0.9 : 0.85} />; })}
-        <g transform={`rotate(${needleAngle}, 50, 50)`}><line x1="50" y1="50" x2="50" y2="16" stroke={t.text} strokeWidth="3" strokeLinecap="round" /><circle cx="50" cy="50" r="5" fill={signal.color} /></g>
+      <svg viewBox="0 0 100 52" style={{ width: '100%', maxWidth: '90px', height: '46px' }}>
+        {gaugeColors.map((c, i) => { const startAngle = 180 + (i * 36); const endAngle = 180 + ((i + 1) * 36); const startRad = (startAngle * Math.PI) / 180; const endRad = (endAngle * Math.PI) / 180; const cx = 50, cy = 48, r = 38; return <path key={i} d={`M ${cx + r * Math.cos(startRad)} ${cy + r * Math.sin(startRad)} A ${r} ${r} 0 0 1 ${cx + r * Math.cos(endRad)} ${cy + r * Math.sin(endRad)}`} fill="none" stroke={c} strokeWidth="8" strokeLinecap="round" opacity={isDark ? 0.9 : 0.85} />; })}
+        <g transform={`rotate(${needleAngle}, 50, 48)`}><line x1="50" y1="48" x2="50" y2="18" stroke={t.text} strokeWidth="2.5" strokeLinecap="round" /><circle cx="50" cy="48" r="4" fill={signal.color} /></g>
       </svg>
-      <div style={{ fontSize: '24px', fontWeight: '800', color: signal.color, lineHeight: '1', marginTop: '-6px' }}>{score}</div>
-      <div style={{ marginTop: '4px', padding: '3px 8px', borderRadius: '6px', background: `${signal.color}20`, border: `1px solid ${signal.color}50`, fontSize: '9px', fontWeight: '700', color: signal.color }}>{signal.text}</div>
-      <div style={{ fontSize: '9px', color: t.textSecondary, marginTop: '3px' }}>{subtitle}</div>
+      <div style={{ fontSize: '18px', fontWeight: '800', color: signal.color, lineHeight: '1', marginTop: '0px' }}>{score}</div>
+      <div style={{ marginTop: '3px', padding: '2px 6px', borderRadius: '4px', background: `${signal.color}20`, border: `1px solid ${signal.color}50`, fontSize: '8px', fontWeight: '700', color: signal.color }}>{signal.text}</div>
+      <div style={{ fontSize: '8px', color: t.textSecondary, marginTop: '2px' }}>{subtitle}</div>
     </div>
   );
 };
@@ -866,10 +866,10 @@ function App() {
         </div>
       </div>
 
-      {/* Three Scores - IMPROVED LAYOUT */}
-      <div style={{ padding: '12px' }}>
+      {/* Three Scores - COMPACT ROW */}
+      <div style={{ padding: '10px 12px' }}>
         <Card theme={theme}>
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '6px' }}>
             <MiniScoreGauge score={dayTradingScore} label="Day" icon="🎯" subtitle="godziny-dni" onHelp={() => setHelpModal('dayTradingScore')} theme={theme} />
             <MiniScoreGauge score={swingScore} label="Swing" icon="📊" subtitle="tygodnie" onHelp={() => setHelpModal('swingScore')} theme={theme} />
             <MiniScoreGauge score={hodlScore} label="HODL" icon="🏦" subtitle="miesiące" onHelp={() => setHelpModal('hodlScore')} theme={theme} />
@@ -1339,7 +1339,7 @@ function App() {
 
       {/* Footer */}
       <div style={{ textAlign: 'center', padding: '14px', color: t.textSecondary, fontSize: '9px', position: 'fixed', bottom: 0, left: 0, right: 0, background: t.bg, borderTop: `1px solid ${t.border}` }}>
-        💡 v3.1 Alerts & Improved UI | Auto-refresh: 60s
+        💡 v3.2 Compact Scores | Auto-refresh: 60s
       </div>
 
       {/* Help Modal */}
