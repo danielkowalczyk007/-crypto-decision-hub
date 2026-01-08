@@ -355,7 +355,14 @@ const helpContent = {
   stablecoinSupply: { title: '💵 Stablecoin Supply', emoji: '💵', description: 'Całkowita podaż stablecoinów.', interpretation: [{ condition: 'Rosnąca', signal: 'bullish', text: '🟢 Kapitał gotowy do kupna' }, { condition: 'Stabilna', signal: 'neutral', text: '🟡 Oczekiwanie' }, { condition: 'Spadająca', signal: 'bearish', text: '🔴 Wyjście z rynku' }], tip: 'Sucha amunicja na zakupy.', source: 'DefiLlama' },
   m2Supply: { title: '🏦 M2 Money Supply', emoji: '🏦', description: 'Globalna podaż pieniądza M2.', interpretation: [{ condition: 'Ekspansja', signal: 'bullish', text: '🟢 QE - risk on' }, { condition: 'Stabilna', signal: 'neutral', text: '🟡 Neutralny' }, { condition: 'Kontrakcja', signal: 'bearish', text: '🔴 QT - risk off' }], tip: 'BTC koreluje z M2 z opóźnieniem ~10 tygodni.', source: 'FRED' },
   portfolio: { title: '💼 Portfolio', emoji: '💼', description: 'Twoje portfolio na Binance.', interpretation: [{ condition: 'Połączony', signal: 'bullish', text: '🟢 API działa' }, { condition: 'Błąd', signal: 'bearish', text: '🔴 Sprawdź klucze' }], tip: 'Nigdy nie włączaj Withdrawals!', source: 'Binance Auth API' },
-  alerts: { title: '🔔 System Alertów', emoji: '🔔', description: 'Ustaw powiadomienia dla wskaźników.', interpretation: [{ condition: 'Score Alert', signal: 'neutral', text: '🔔 Powiadomienie gdy Day/Swing/HODL przekroczy próg' }, { condition: 'Price Alert', signal: 'neutral', text: '🔔 Alert cenowy BTC/ETH/SOL' }, { condition: 'F&G Alert', signal: 'neutral', text: '🔔 Alert na ekstrema sentymentu' }], tip: 'Włącz powiadomienia przeglądarki!', source: 'Local' }
+  alerts: { title: '🔔 System Alertów', emoji: '🔔', description: 'Ustaw powiadomienia dla wskaźników.', interpretation: [{ condition: 'Score Alert', signal: 'neutral', text: '🔔 Powiadomienie gdy Day/Swing/HODL przekroczy próg' }, { condition: 'Price Alert', signal: 'neutral', text: '🔔 Alert cenowy BTC/ETH/SOL' }, { condition: 'F&G Alert', signal: 'neutral', text: '🔔 Alert na ekstrema sentymentu' }], tip: 'Włącz powiadomienia przeglądarki!', source: 'Local' },
+  marketBreadth: { title: '📊 Market Breadth', emoji: '📊', description: 'Stosunek coinów rosnących do spadających na Binance. Pokazuje ogólny sentyment rynku.', interpretation: [{ condition: '>65% Bullish', signal: 'bullish', text: '🟢 Silny rynek - większość rośnie' }, { condition: '45-65% Bullish', signal: 'neutral', text: '🟡 Neutralny - rynek mieszany' }, { condition: '<45% Bullish', signal: 'bearish', text: '🔴 Słaby rynek - większość spada' }], tip: 'Breadth potwierdza siłę trendu. Rally przy niskim breadth jest słabe.', source: 'Binance API' },
+  altseasonIndex: { title: '🌊 Altseason Index', emoji: '🌊', description: 'Wskaźnik 0-100 mierzący siłę altcoinów vs BTC. Oparty na dominacji BTC i ETH/BTC ratio.', interpretation: [{ condition: '>75', signal: 'bullish', text: '🟢 ALTSEASON - alty dominują' }, { condition: '50-75', signal: 'bullish', text: '🟢 Alty rosną - rotacja z BTC' }, { condition: '40-50', signal: 'neutral', text: '🟡 Neutralny - obserwuj' }, { condition: '<40', signal: 'bearish', text: '🔴 BTC Season - trzymaj BTC' }], tip: 'Historycznie altseason następuje po silnym wzroście BTC.', source: 'CoinGecko' },
+  ethBtcRatio: { title: '⚗️ ETH/BTC Ratio', emoji: '⚗️', description: 'Stosunek ceny ETH do BTC. Kluczowy wskaźnik siły altcoinów.', interpretation: [{ condition: '>0.055', signal: 'bullish', text: '🟢 ETH silny - altseason sygnał' }, { condition: '0.035-0.055', signal: 'neutral', text: '🟡 Neutralny zakres' }, { condition: '<0.035', signal: 'bearish', text: '🔴 ETH słaby - BTC dominuje' }], tip: 'Rosnący ETH/BTC często poprzedza altseason.', source: 'CoinGecko' },
+  total2: { title: '📈 Total2 Market Cap', emoji: '📈', description: 'Całkowita kapitalizacja rynku bez BTC. Mierzy wartość wszystkich altcoinów.', interpretation: [{ condition: 'Rośnie + BTC Dom spada', signal: 'bullish', text: '🟢 Kapitał płynie do altów' }, { condition: 'Stabilne', signal: 'neutral', text: '🟡 Rynek w konsolidacji' }, { condition: 'Spada + BTC Dom rośnie', signal: 'bearish', text: '🔴 Rotacja do BTC - risk off' }], tip: 'Total2 > $1.5T historycznie sygnalizuje silny altseason.', source: 'CoinGecko' },
+  stablecoinFlows: { title: '💵 Stablecoin Flows', emoji: '💵', description: 'Przepływy kapitału w USDT/USDC. Rosnąca podaż = nowy kapitał na rynku.', interpretation: [{ condition: '>+1% 7d', signal: 'bullish', text: '🟢 Kapitał napływa - bullish' }, { condition: '±1% 7d', signal: 'neutral', text: '🟡 Stabilny przepływ' }, { condition: '<-1% 7d', signal: 'bearish', text: '🔴 Odpływ kapitału - ostrożnie' }], tip: 'USDT dominance >70% sugeruje większą płynność w parach USDT.', source: 'DefiLlama Stablecoins' },
+  topGainers: { title: '🚀 Top Gainers', emoji: '🚀', description: 'Coiny z największymi wzrostami 24h na Binance. Pokazuje gdzie płynie kapitał spekulacyjny.', interpretation: [{ condition: 'Top coiny >20%', signal: 'bullish', text: '🟢 Silna spekulacja - momentum' }, { condition: 'Top coiny 5-20%', signal: 'neutral', text: '🟡 Normalna aktywność' }, { condition: 'Wszystkie <5%', signal: 'bearish', text: '🔴 Brak momentum - słaby rynek' }], tip: 'Szukaj powtarzających się sektorów wśród top gainers.', source: 'Binance API' },
+  topLosers: { title: '📉 Top Losers', emoji: '📉', description: 'Coiny z największymi spadkami 24h na Binance. Pokazuje gdzie kapitał ucieka.', interpretation: [{ condition: 'Losers <-10%', signal: 'bearish', text: '🔴 Panika - potencjalne okazje' }, { condition: 'Losers -5% do -10%', signal: 'neutral', text: '🟡 Normalna korekta' }, { condition: 'Losers >-5%', signal: 'bullish', text: '🟢 Mała korekta - rynek silny' }], tip: 'Silne projekty na liście losers mogą być okazją.', source: 'Binance API' }
 };
 
 // ============== UI COMPONENTS ==============
@@ -933,7 +940,7 @@ function App() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {/* Market Breadth */}
             {msData?.marketBreadth && (
-              <Card theme={theme}>
+              <Card helpKey="marketBreadth" onHelp={setHelpModal} theme={theme} signalColor={parseInt(msData.marketBreadth.ratio) > 55 ? t.positive : parseInt(msData.marketBreadth.ratio) < 45 ? t.negative : t.warning} isLive={!!msData?.marketBreadth}>
                 <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px' }}>📊 Market Breadth ({msData.source}) <span style={{ fontSize: '9px', color: t.textSecondary }}>({msData.marketBreadth.total} par)</span></div>
                 <div style={{ display: 'flex', justifyContent: 'space-around', textAlign: 'center' }}>
                   <div><div style={{ fontSize: '18px', fontWeight: '700', color: t.positive }}>{msData.marketBreadth.gainers}</div><div style={{ fontSize: '9px', color: t.textSecondary }}>Gainers</div></div>
@@ -949,7 +956,7 @@ function App() {
 
             {/* Altseason Indicators - MOVED UP */}
             {altseasonData && (
-              <Card theme={theme}>
+              <Card helpKey="altseasonIndex" onHelp={setHelpModal} theme={theme} signalColor={altseasonData.altseasonIndex > 50 ? t.positive : altseasonData.altseasonIndex < 40 ? t.negative : t.warning} isLive={!!altseasonData}>
                 <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '10px' }}>🌊 Altseason Indicators <LiveTag theme={theme} /></div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
                   <div style={{ padding: '10px', background: t.bg, borderRadius: '8px', textAlign: 'center' }}>
@@ -978,7 +985,7 @@ function App() {
 
             {/* Stablecoin Flows - MOVED UP */}
             {altseasonData?.stablecoins && (
-              <Card theme={theme}>
+              <Card helpKey="stablecoinFlows" onHelp={setHelpModal} theme={theme} signalColor={(altseasonData.stablecoins.usdt.change7d + altseasonData.stablecoins.usdc.change7d) > 1 ? t.positive : (altseasonData.stablecoins.usdt.change7d + altseasonData.stablecoins.usdc.change7d) < -1 ? t.negative : t.warning} isLive={!!altseasonData?.stablecoins}>
                 <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '10px' }}>💵 Stablecoin Flows (7d) <LiveTag theme={theme} /></div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
                   <div style={{ padding: '10px', background: t.bg, borderRadius: '8px' }}>
@@ -1020,7 +1027,7 @@ function App() {
 
             {/* Top Gainers - MOVED DOWN */}
             {msData?.topGainers && (
-              <Card theme={theme}>
+              <Card helpKey="topGainers" onHelp={setHelpModal} theme={theme} signalColor={t.positive} isLive={!!msData?.topGainers}>
                 <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px', color: t.positive }}>🚀 Top Gainers 24h</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                   {msData.topGainers.slice(0, 10).map((coin, i) => (
@@ -1041,7 +1048,7 @@ function App() {
 
             {/* Top Losers - MOVED DOWN */}
             {msData?.topLosers && (
-              <Card theme={theme}>
+              <Card helpKey="topLosers" onHelp={setHelpModal} theme={theme} signalColor={t.negative} isLive={!!msData?.topLosers}>
                 <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px', color: t.negative }}>📉 Top Losers 24h</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                   {msData.topLosers.slice(0, 10).map((coin, i) => (
@@ -1339,7 +1346,7 @@ function App() {
 
       {/* Footer */}
       <div style={{ textAlign: 'center', padding: '14px', color: t.textSecondary, fontSize: '9px', position: 'fixed', bottom: 0, left: 0, right: 0, background: t.bg, borderTop: `1px solid ${t.border}` }}>
-        💡 v3.3 Grid Tabs & Charts Order | Auto-refresh: 60s
+        💡 v3.4 Structure Help & Colors | Auto-refresh: 60s
       </div>
 
       {/* Help Modal */}
