@@ -26,6 +26,31 @@ const loadApiKeys = () => {
 
 const clearApiKeys = () => { localStorage.removeItem('binance_api_key'); localStorage.removeItem('binance_secret_key'); };
 
+// ============== ALERTS STORAGE ==============
+const saveAlerts = (alerts) => {
+  try { localStorage.setItem('crypto_hub_alerts', JSON.stringify(alerts)); return true; }
+  catch (e) { return false; }
+};
+
+const loadAlerts = () => {
+  try {
+    const data = localStorage.getItem('crypto_hub_alerts');
+    return data ? JSON.parse(data) : [];
+  } catch (e) { return []; }
+};
+
+const saveAlertHistory = (history) => {
+  try { localStorage.setItem('crypto_hub_alert_history', JSON.stringify(history.slice(-50))); return true; }
+  catch (e) { return false; }
+};
+
+const loadAlertHistory = () => {
+  try {
+    const data = localStorage.getItem('crypto_hub_alert_history');
+    return data ? JSON.parse(data) : [];
+  } catch (e) { return []; }
+};
+
 // ============== BINANCE AUTHENTICATED API ==============
 const fetchSpotBalance = async (apiKey, secretKey) => {
   try {
@@ -118,7 +143,13 @@ const placeFuturesOrder = async (apiKey, secretKey, symbol, side, type, quantity
   } catch (error) { return { success: false, error: error.message }; }
 };
 
-const cancelOrder = async (apiKey, secretKey, symbol, orderId, market = 'SPOT') => {
+const closeFuturesPosition = async (apiKey, secretKey, symbol, positionAmt) => {
+  const side = parseFloat(positionAmt) > 0 ? 'SELL' : 'BUY';
+  const quantity = Math.abs(parseFloat(positionAmt));
+  return placeFuturesOrder(apiKey, secretKey, symbol, side, 'MARKET', quantity, null, true);
+};
+
+const cancelOrder = async (apiKey, secretKey, symbol, orderId, market) => {
   try {
     const timestamp = Date.now();
     const params = `symbol=${symbol}&orderId=${orderId}&timestamp=${timestamp}`;
@@ -127,56 +158,47 @@ const cancelOrder = async (apiKey, secretKey, symbol, orderId, market = 'SPOT') 
     const response = await fetch(`${baseUrl}?${params}&signature=${signature}`, { method: 'DELETE', headers: { 'X-MBX-APIKEY': apiKey } });
     const data = await response.json();
     if (!response.ok) throw new Error(data.msg || 'Cancel failed');
-    return { success: true, order: data };
+    return { success: true };
   } catch (error) { return { success: false, error: error.message }; }
 };
 
-const closeFuturesPosition = async (apiKey, secretKey, symbol, positionAmt) => {
-  const side = positionAmt > 0 ? 'SELL' : 'BUY';
-  const quantity = Math.abs(positionAmt);
-  return await placeFuturesOrder(apiKey, secretKey, symbol, side, 'MARKET', quantity, null, true);
-};
-
-// ============== PUBLIC API FUNCTIONS ==============
+// ============== API FUNCTIONS ==============
 const fetchCoinGeckoData = async () => {
   try {
-    const [pricesRes, globalRes, fearGreedRes] = await Promise.all([
-      fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd&include_24hr_change=true&include_market_cap=true'),
+    const [priceRes, globalRes, fgRes] = await Promise.all([
+      fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd&include_24hr_change=true'),
       fetch('https://api.coingecko.com/api/v3/global'),
       fetch('https://api.alternative.me/fng/?limit=1')
     ]);
-    const prices = await pricesRes.json();
+    const prices = await priceRes.json();
     const global = await globalRes.json();
-    const fearGreed = await fearGreedRes.json();
+    const fg = await fgRes.json();
     return {
-      btcPrice: { value: Math.round(prices.bitcoin.usd), change: parseFloat(prices.bitcoin.usd_24h_change?.toFixed(2)) || 0 },
-      ethPrice: { value: Math.round(prices.ethereum.usd), change: parseFloat(prices.ethereum.usd_24h_change?.toFixed(2)) || 0 },
-      solPrice: { value: parseFloat(prices.solana.usd.toFixed(2)), change: parseFloat(prices.solana.usd_24h_change?.toFixed(2)) || 0 },
-      btcDominance: { value: parseFloat(global.data.market_cap_percentage.btc.toFixed(1)), change: 0 },
-      totalMarketCap: global.data.total_market_cap.usd,
-      volume24h: parseFloat((global.data.total_volume.usd / 1e9).toFixed(1)),
-      fearGreed: { value: parseInt(fearGreed.data[0].value), label: fearGreed.data[0].value_classification }
+      btcPrice: { value: prices.bitcoin?.usd || 0, change: parseFloat(prices.bitcoin?.usd_24h_change?.toFixed(2)) || 0 },
+      ethPrice: { value: prices.ethereum?.usd || 0, change: parseFloat(prices.ethereum?.usd_24h_change?.toFixed(2)) || 0 },
+      solPrice: { value: prices.solana?.usd || 0, change: parseFloat(prices.solana?.usd_24h_change?.toFixed(2)) || 0 },
+      btcDominance: { value: parseFloat(global.data?.market_cap_percentage?.btc?.toFixed(1)) || 0 },
+      volume24h: parseFloat((global.data?.total_volume?.usd / 1e9)?.toFixed(1)) || 0,
+      fearGreed: { value: parseInt(fg.data?.[0]?.value) || 50, label: fg.data?.[0]?.value_classification || 'Neutral' }
     };
   } catch (error) { return null; }
 };
 
 const fetchBinanceData = async () => {
   try {
-    const [fundingRes, oiRes, longShortRes] = await Promise.all([
-      fetch('https://fapi.binance.com/fapi/v1/premiumIndex?symbol=BTCUSDT'),
+    const [fundingRes, oiRes, lsRes] = await Promise.all([
+      fetch('https://fapi.binance.com/fapi/v1/fundingRate?symbol=BTCUSDT&limit=1'),
       fetch('https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT'),
       fetch('https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=1h&limit=1')
     ]);
     const funding = await fundingRes.json();
     const oi = await oiRes.json();
-    const longShort = await longShortRes.json();
-    const fundingRate = parseFloat(funding.lastFundingRate) * 100;
-    const oiValue = parseFloat(oi.openInterest);
-    const lsRatio = parseFloat(longShort[0]?.longShortRatio || 1);
+    const ls = await lsRes.json();
+    const btcPrice = (await (await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT')).json()).price;
     return {
-      fundingRate: { value: parseFloat(fundingRate.toFixed(4)), sentiment: fundingRate > 0.05 ? 'overleveraged' : fundingRate < -0.01 ? 'bearish' : 'neutral' },
-      openInterest: { value: parseFloat((oiValue * 95000 / 1e9).toFixed(2)), change: 0 },
-      longShortRatio: { value: parseFloat(lsRatio.toFixed(2)) }
+      fundingRate: { value: parseFloat((parseFloat(funding[0]?.fundingRate) * 100).toFixed(4)) || 0 },
+      openInterest: { value: parseFloat(((parseFloat(oi?.openInterest) * parseFloat(btcPrice)) / 1e9).toFixed(2)) || 0 },
+      longShortRatio: { value: parseFloat(parseFloat(ls[0]?.longShortRatio).toFixed(2)) || 1 }
     };
   } catch (error) { return null; }
 };
@@ -185,18 +207,18 @@ const fetchDefiLlamaData = async () => {
   try {
     const [tvlRes, stableRes, protocolsRes] = await Promise.all([
       fetch('https://api.llama.fi/v2/historicalChainTvl'),
-      fetch('https://stablecoins.llama.fi/stablecoincharts/all?stablecoin=1'),
+      fetch('https://api.llama.fi/v2/stablecoins'),
       fetch('https://api.llama.fi/protocols')
     ]);
     const tvlData = await tvlRes.json();
     const stableData = await stableRes.json();
     const protocols = await protocolsRes.json();
     const latestTvl = tvlData[tvlData.length - 1]?.tvl || 0;
-    const prevTvl = tvlData[tvlData.length - 8]?.tvl || latestTvl;
-    const tvlChange = ((latestTvl - prevTvl) / prevTvl * 100).toFixed(1);
-    const latestStable = stableData[stableData.length - 1]?.totalCirculating?.peggedUSD || 0;
-    const prevStable = stableData[stableData.length - 31]?.totalCirculating?.peggedUSD || latestStable;
-    const stableChange = ((latestStable - prevStable) / prevStable * 100).toFixed(1);
+    const weekAgoTvl = tvlData[tvlData.length - 8]?.tvl || latestTvl;
+    const tvlChange = ((latestTvl - weekAgoTvl) / weekAgoTvl * 100).toFixed(1);
+    const latestStable = stableData.reduce((sum, s) => sum + (s.circulating?.peggedUSD || 0), 0);
+    const monthAgoStable = stableData.reduce((sum, s) => sum + (s.circulatingPrevMonth?.peggedUSD || s.circulating?.peggedUSD || 0), 0);
+    const stableChange = ((latestStable - monthAgoStable) / monthAgoStable * 100).toFixed(1);
     const top5 = protocols.sort((a, b) => (b.tvl || 0) - (a.tvl || 0)).slice(0, 5).map(p => ({ name: p.name, tvl: p.tvl, change: p.change_1d || 0 }));
     return {
       tvl: { value: parseFloat((latestTvl / 1e9).toFixed(1)), change: parseFloat(tvlChange) },
@@ -285,37 +307,55 @@ const TradingViewChart = ({ symbol = 'BINANCE:BTCUSDT', theme = 'dark' }) => {
       containerRef.current.innerHTML = '';
       const script = document.createElement('script');
       script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
+      script.type = 'text/javascript';
       script.async = true;
-      script.innerHTML = JSON.stringify({ autosize: true, symbol, interval: 'D', timezone: 'Europe/Warsaw', theme, style: '1', locale: 'pl', allow_symbol_change: true, studies: ['RSI@tv-basicstudies', 'MASimple@tv-basicstudies'] });
+      script.innerHTML = JSON.stringify({
+        autosize: true, symbol, interval: 'D', timezone: 'Europe/Warsaw', theme,
+        style: '1', locale: 'en', hide_top_toolbar: true, hide_legend: false,
+        save_image: false, calendar: false, support_host: 'https://www.tradingview.com'
+      });
       containerRef.current.appendChild(script);
     }
   }, [symbol, theme]);
-  return <div ref={containerRef} style={{ height: '400px', width: '100%', borderRadius: '12px', overflow: 'hidden' }} />;
+  return <div ref={containerRef} style={{ height: '300px', borderRadius: '12px', overflow: 'hidden' }} />;
 };
 
-const TradingViewTechnicalAnalysis = ({ symbol = 'BINANCE:BTCUSDT', theme = 'dark', interval = '1D' }) => {
+const TradingViewTechnicalAnalysis = ({ symbol = 'BINANCE:BTCUSDT', interval = '1D', theme = 'dark' }) => {
   const containerRef = useRef(null);
   useEffect(() => {
     if (containerRef.current) {
       containerRef.current.innerHTML = '';
       const script = document.createElement('script');
       script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-technical-analysis.js';
+      script.type = 'text/javascript';
       script.async = true;
-      script.innerHTML = JSON.stringify({ interval, width: '100%', isTransparent: true, height: '450', symbol, showIntervalTabs: true, displayMode: 'single', locale: 'pl', colorTheme: theme });
+      script.innerHTML = JSON.stringify({
+        interval, width: '100%', isTransparent: true, height: '280',
+        symbol, showIntervalTabs: true, displayMode: 'single', locale: 'en', colorTheme: theme
+      });
       containerRef.current.appendChild(script);
     }
-  }, [symbol, theme, interval]);
-  return <div ref={containerRef} style={{ height: '450px', width: '100%' }} />;
+  }, [symbol, interval, theme]);
+  return <div ref={containerRef} style={{ height: '280px' }} />;
 };
 
 // ============== HELP CONTENT ==============
 const helpContent = {
-  dayTradingScore: { title: '🎯 Day Trading Score', emoji: '🎯', description: 'Wskaźnik dla aktywnych traderów. Horyzont: godziny do dni.', interpretation: [{ condition: '70-100', signal: 'bullish', text: '🟢 AKUMULUJ' }, { condition: '55-69', signal: 'bullish', text: '🟢 HOLD+' }, { condition: '45-54', signal: 'neutral', text: '🟡 HOLD' }, { condition: '30-44', signal: 'warning', text: '🟠 OSTROŻNIE' }, { condition: '0-29', signal: 'bearish', text: '🔴 REDUKUJ' }], tip: 'Składowe: Fear & Greed, Funding Rate, Momentum BTC, Long/Short Ratio.', source: 'CoinGecko, Binance' },
-  swingScore: { title: '📊 Swing Score', emoji: '📊', description: 'Wskaźnik dla swing traderów. Horyzont: tygodnie.', interpretation: [{ condition: '70-100', signal: 'bullish', text: '🟢 AKUMULUJ' }, { condition: '55-69', signal: 'bullish', text: '🟢 HOLD+' }, { condition: '45-54', signal: 'neutral', text: '🟡 HOLD' }, { condition: '30-44', signal: 'warning', text: '🟠 OSTROŻNIE' }, { condition: '0-29', signal: 'bearish', text: '🔴 REDUKUJ' }], tip: 'Składowe: TVL trend, BTC Dominance, Stablecoin inflows.', source: 'DefiLlama, CoinGecko' },
+  dayTradingScore: { title: '🎯 Day Trading Score', emoji: '🎯', description: 'Wskaźnik dla krótkoterminowych traderów. Horyzont: godziny-dni. Agresywne progi.', interpretation: [{ condition: '80-100', signal: 'bullish', text: '🟢 AKUMULUJ' }, { condition: '65-79', signal: 'bullish', text: '🟢 HOLD+' }, { condition: '50-64', signal: 'neutral', text: '🟡 HOLD' }, { condition: '35-49', signal: 'warning', text: '🟠 OSTROŻNIE' }, { condition: '0-34', signal: 'bearish', text: '🔴 REDUKUJ' }], tip: 'Składowe: Fear & Greed, Funding Rate, BTC 24h momentum, L/S Ratio.', source: 'Binance, Alternative.me' },
+  swingScore: { title: '📊 Swing Score', emoji: '📊', description: 'Wskaźnik dla swing traderów. Horyzont: tygodnie.', interpretation: [{ condition: '70-100', signal: 'bullish', text: '🟢 AKUMULUJ' }, { condition: '55-69', signal: 'bullish', text: '🟢 HOLD+' }, { condition: '45-54', signal: 'neutral', text: '🟡 HOLD' }, { condition: '30-44', signal: 'warning', text: '🟠 OSTROŻNIE' }, { condition: '0-29', signal: 'bearish', text: '🔴 REDUKUJ' }], tip: 'Składowe: F&G, TVL 7d, BTC Dom, Stables, Altseason.', source: 'DefiLlama, CoinGecko' },
   hodlScore: { title: '🏦 HODL Score', emoji: '🏦', description: 'Wskaźnik dla długoterminowych inwestorów. Horyzont: miesiące.', interpretation: [{ condition: '70-100', signal: 'bullish', text: '🟢 AKUMULUJ' }, { condition: '55-69', signal: 'bullish', text: '🟢 HOLD+' }, { condition: '45-54', signal: 'neutral', text: '🟡 HOLD' }, { condition: '30-44', signal: 'warning', text: '🟠 OSTROŻNIE' }, { condition: '0-29', signal: 'bearish', text: '🔴 REDUKUJ' }], tip: 'Składowe: M2 Money Supply, Stablecoin supply, TVL, F&G ekstrema.', source: 'FRED, DefiLlama' },
+  btcPrice: { title: '₿ Bitcoin Price', emoji: '₿', description: 'Aktualna cena Bitcoina w USD.', interpretation: [{ condition: '+5%', signal: 'bullish', text: '🟢 Silny wzrost' }, { condition: '±2%', signal: 'neutral', text: '🟡 Stabilny' }, { condition: '-5%', signal: 'bearish', text: '🔴 Silny spadek' }], tip: 'Śledź trendy długoterminowe.', source: 'CoinGecko' },
+  ethPrice: { title: '◆ Ethereum Price', emoji: '◆', description: 'Aktualna cena Ethereum w USD.', interpretation: [{ condition: '+5%', signal: 'bullish', text: '🟢 Silny wzrost' }, { condition: '±2%', signal: 'neutral', text: '🟡 Stabilny' }, { condition: '-5%', signal: 'bearish', text: '🔴 Silny spadek' }], tip: 'ETH często wyprzedza altcoiny.', source: 'CoinGecko' },
   fearGreed: { title: '😱 Fear & Greed Index', emoji: '😱', description: 'Wskaźnik sentymentu rynku 0-100.', interpretation: [{ condition: '0-25', signal: 'bullish', text: '🟢 Extreme Fear - okazja' }, { condition: '26-45', signal: 'bullish', text: '🟢 Fear - akumuluj' }, { condition: '46-55', signal: 'neutral', text: '🟡 Neutral' }, { condition: '56-75', signal: 'warning', text: '🟠 Greed - ostrożnie' }, { condition: '76-100', signal: 'bearish', text: '🔴 Extreme Greed - realizuj' }], tip: 'Kontrariański wskaźnik.', source: 'Alternative.me' },
+  btcDominance: { title: '👑 BTC Dominance', emoji: '👑', description: 'Udział BTC w całkowitej kapitalizacji rynku.', interpretation: [{ condition: '>55%', signal: 'bearish', text: '🔴 BTC Season - alty słabe' }, { condition: '45-55%', signal: 'neutral', text: '🟡 Zrównoważony rynek' }, { condition: '<45%', signal: 'bullish', text: '🟢 Altseason!' }], tip: 'Spadająca dominacja = altseason.', source: 'CoinGecko' },
   fundingRate: { title: '💸 Funding Rate', emoji: '💸', description: 'Opłata między long/short na perpetuals.', interpretation: [{ condition: '> 0.05%', signal: 'bearish', text: '🔴 Overleveraged' }, { condition: '0-0.03%', signal: 'neutral', text: '🟡 Neutral' }, { condition: '< 0', signal: 'bullish', text: '🟢 Bearish sentiment' }], tip: 'Wysoki funding = lokalne szczyty.', source: 'Binance API' },
-  portfolio: { title: '💼 Portfolio', emoji: '💼', description: 'Twoje portfolio na Binance.', interpretation: [{ condition: 'Połączony', signal: 'bullish', text: '🟢 API działa' }, { condition: 'Błąd', signal: 'bearish', text: '🔴 Sprawdź klucze' }], tip: 'Nigdy nie włączaj Withdrawals!', source: 'Binance Auth API' }
+  openInterest: { title: '📊 Open Interest', emoji: '📊', description: 'Wartość otwartych pozycji na futures.', interpretation: [{ condition: 'Rosnący + cena rośnie', signal: 'bullish', text: '🟢 Silny trend wzrostowy' }, { condition: 'Rosnący + cena spada', signal: 'bearish', text: '🔴 Silny trend spadkowy' }, { condition: 'Spadający', signal: 'neutral', text: '🟡 Zamykanie pozycji' }], tip: 'Potwierdza siłę trendu.', source: 'Binance' },
+  longShortRatio: { title: '⚖️ Long/Short Ratio', emoji: '⚖️', description: 'Stosunek pozycji long do short.', interpretation: [{ condition: '> 1.8', signal: 'bearish', text: '🔴 Za dużo longów' }, { condition: '1.0-1.8', signal: 'neutral', text: '🟡 Zbalansowany' }, { condition: '< 0.9', signal: 'bullish', text: '🟢 Kontrariański sygnał kupna' }], tip: 'Wskaźnik kontrariański.', source: 'Binance' },
+  tvl: { title: '🔒 Total Value Locked', emoji: '🔒', description: 'Całkowita wartość zablokowana w DeFi.', interpretation: [{ condition: '+5% 7d', signal: 'bullish', text: '🟢 Kapitał napływa' }, { condition: '±2% 7d', signal: 'neutral', text: '🟡 Stabilny' }, { condition: '-5% 7d', signal: 'bearish', text: '🔴 Kapitał ucieka' }], tip: 'Wskaźnik adopcji DeFi.', source: 'DefiLlama' },
+  stablecoinSupply: { title: '💵 Stablecoin Supply', emoji: '💵', description: 'Całkowita podaż stablecoinów.', interpretation: [{ condition: 'Rosnąca', signal: 'bullish', text: '🟢 Kapitał gotowy do kupna' }, { condition: 'Stabilna', signal: 'neutral', text: '🟡 Oczekiwanie' }, { condition: 'Spadająca', signal: 'bearish', text: '🔴 Wyjście z rynku' }], tip: 'Sucha amunicja na zakupy.', source: 'DefiLlama' },
+  m2Supply: { title: '🏦 M2 Money Supply', emoji: '🏦', description: 'Globalna podaż pieniądza M2.', interpretation: [{ condition: 'Ekspansja', signal: 'bullish', text: '🟢 QE - risk on' }, { condition: 'Stabilna', signal: 'neutral', text: '🟡 Neutralny' }, { condition: 'Kontrakcja', signal: 'bearish', text: '🔴 QT - risk off' }], tip: 'BTC koreluje z M2 z opóźnieniem ~10 tygodni.', source: 'FRED' },
+  portfolio: { title: '💼 Portfolio', emoji: '💼', description: 'Twoje portfolio na Binance.', interpretation: [{ condition: 'Połączony', signal: 'bullish', text: '🟢 API działa' }, { condition: 'Błąd', signal: 'bearish', text: '🔴 Sprawdź klucze' }], tip: 'Nigdy nie włączaj Withdrawals!', source: 'Binance Auth API' },
+  alerts: { title: '🔔 System Alertów', emoji: '🔔', description: 'Ustaw powiadomienia dla wskaźników.', interpretation: [{ condition: 'Score Alert', signal: 'neutral', text: '🔔 Powiadomienie gdy Day/Swing/HODL przekroczy próg' }, { condition: 'Price Alert', signal: 'neutral', text: '🔔 Alert cenowy BTC/ETH/SOL' }, { condition: 'F&G Alert', signal: 'neutral', text: '🔔 Alert na ekstrema sentymentu' }], tip: 'Włącz powiadomienia przeglądarki!', source: 'Local' }
 };
 
 // ============== UI COMPONENTS ==============
@@ -375,6 +415,7 @@ const ApiStatusBadge = ({ status, label, theme }) => {
   return <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 6px', borderRadius: '4px', background: `${color}18`, fontSize: '9px', fontWeight: '600', color }}><span style={{ width: '5px', height: '5px', borderRadius: '50%', background: color, animation: status === 'live' ? 'pulse 2s infinite' : 'none' }} />{label}</span>;
 };
 
+// ============== IMPROVED SCORE GAUGE ==============
 const MiniScoreGauge = ({ score, label, icon, subtitle, onHelp, theme }) => {
   const isDark = theme === 'dark';
   const t = isDark ? { text: '#f1f5f9', textSecondary: '#64748b' } : { text: '#1e293b', textSecondary: '#64748b' };
@@ -383,18 +424,135 @@ const MiniScoreGauge = ({ score, label, icon, subtitle, onHelp, theme }) => {
   const needleAngle = -90 + (score / 100) * 180;
   const gaugeColors = ['#ef4444', '#f97316', '#eab308', '#84cc16', '#22c55e'];
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '108px', padding: '6px', background: isDark ? 'rgba(30,41,59,0.4)' : 'rgba(241,245,249,0.6)', borderRadius: '10px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: '2px' }}>
-        <span style={{ fontSize: '10px', fontWeight: '600', color: t.text }}>{icon} {label}</span>
-        <button onClick={onHelp} style={{ width: '16px', height: '16px', borderRadius: '50%', background: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', border: 'none', color: t.textSecondary, fontSize: '9px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>?</button>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '100px', flex: '1 1 100px', maxWidth: '130px', padding: '8px', background: isDark ? 'rgba(30,41,59,0.5)' : 'rgba(241,245,249,0.7)', borderRadius: '12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: '4px' }}>
+        <span style={{ fontSize: '11px', fontWeight: '700', color: t.text }}>{icon} {label}</span>
+        <button onClick={onHelp} style={{ width: '18px', height: '18px', borderRadius: '50%', background: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', border: 'none', color: t.textSecondary, fontSize: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>?</button>
       </div>
-      <svg viewBox="0 0 100 58" style={{ width: '100%', height: '50px' }}>
-        {gaugeColors.map((c, i) => { const startAngle = 180 + (i * 36); const endAngle = 180 + ((i + 1) * 36); const startRad = (startAngle * Math.PI) / 180; const endRad = (endAngle * Math.PI) / 180; const cx = 50, cy = 50, r = 38; return <path key={i} d={`M ${cx + r * Math.cos(startRad)} ${cy + r * Math.sin(startRad)} A ${r} ${r} 0 0 1 ${cx + r * Math.cos(endRad)} ${cy + r * Math.sin(endRad)}`} fill="none" stroke={c} strokeWidth="8" strokeLinecap="round" opacity={isDark ? 0.9 : 0.85} />; })}
-        <g transform={`rotate(${needleAngle}, 50, 50)`}><line x1="50" y1="50" x2="50" y2="18" stroke={t.text} strokeWidth="2.5" strokeLinecap="round" /><circle cx="50" cy="50" r="4" fill={signal.color} /></g>
+      <svg viewBox="0 0 100 55" style={{ width: '100%', height: '55px' }}>
+        {gaugeColors.map((c, i) => { const startAngle = 180 + (i * 36); const endAngle = 180 + ((i + 1) * 36); const startRad = (startAngle * Math.PI) / 180; const endRad = (endAngle * Math.PI) / 180; const cx = 50, cy = 50, r = 40; return <path key={i} d={`M ${cx + r * Math.cos(startRad)} ${cy + r * Math.sin(startRad)} A ${r} ${r} 0 0 1 ${cx + r * Math.cos(endRad)} ${cy + r * Math.sin(endRad)}`} fill="none" stroke={c} strokeWidth="10" strokeLinecap="round" opacity={isDark ? 0.9 : 0.85} />; })}
+        <g transform={`rotate(${needleAngle}, 50, 50)`}><line x1="50" y1="50" x2="50" y2="16" stroke={t.text} strokeWidth="3" strokeLinecap="round" /><circle cx="50" cy="50" r="5" fill={signal.color} /></g>
       </svg>
-      <div style={{ fontSize: '20px', fontWeight: '700', color: signal.color, lineHeight: '1', marginTop: '-8px' }}>{score}</div>
-      <div style={{ marginTop: '3px', padding: '2px 6px', borderRadius: '4px', background: `${signal.color}18`, border: `1px solid ${signal.color}40`, fontSize: '8px', fontWeight: '700', color: signal.color }}>{signal.text}</div>
-      <div style={{ fontSize: '8px', color: t.textSecondary, marginTop: '2px' }}>{subtitle}</div>
+      <div style={{ fontSize: '24px', fontWeight: '800', color: signal.color, lineHeight: '1', marginTop: '-6px' }}>{score}</div>
+      <div style={{ marginTop: '4px', padding: '3px 8px', borderRadius: '6px', background: `${signal.color}20`, border: `1px solid ${signal.color}50`, fontSize: '9px', fontWeight: '700', color: signal.color }}>{signal.text}</div>
+      <div style={{ fontSize: '9px', color: t.textSecondary, marginTop: '3px' }}>{subtitle}</div>
+    </div>
+  );
+};
+
+// ============== ALERT TOAST ==============
+const AlertToast = ({ alert, onClose, theme }) => {
+  const t = theme === 'dark' ? { bg: '#1e293b', text: '#f1f5f9', border: '#334155' } : { bg: '#ffffff', text: '#1e293b', border: '#e2e8f0' };
+  useEffect(() => {
+    const timer = setTimeout(onClose, 5000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
+  return (
+    <div style={{ position: 'fixed', top: '70px', right: '12px', left: '12px', background: t.bg, border: `1px solid ${t.border}`, borderRadius: '12px', padding: '12px', boxShadow: '0 10px 40px rgba(0,0,0,0.3)', zIndex: 1001, animation: 'slideIn 0.3s ease' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <div style={{ fontSize: '12px', fontWeight: '700', color: t.text, marginBottom: '4px' }}>🔔 Alert: {alert.name}</div>
+          <div style={{ fontSize: '11px', color: theme === 'dark' ? '#94a3b8' : '#64748b' }}>{alert.message}</div>
+        </div>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', color: theme === 'dark' ? '#64748b' : '#94a3b8', fontSize: '18px', cursor: 'pointer' }}>×</button>
+      </div>
+      <style>{`@keyframes slideIn { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }`}</style>
+    </div>
+  );
+};
+
+// ============== ALERT PANEL ==============
+const AlertPanel = ({ alerts, onAddAlert, onDeleteAlert, onClose, theme }) => {
+  const [alertType, setAlertType] = useState('score');
+  const [alertMetric, setAlertMetric] = useState('dayTrading');
+  const [alertCondition, setAlertCondition] = useState('below');
+  const [alertValue, setAlertValue] = useState('');
+  const [alertName, setAlertName] = useState('');
+  
+  const t = theme === 'dark' ? { bg: 'rgba(15,23,42,0.98)', cardBg: '#1e293b', text: '#f1f5f9', textSecondary: '#94a3b8', border: '#334155', accent: '#3b82f6', positive: '#22c55e', negative: '#ef4444' } : { bg: 'rgba(255,255,255,0.98)', cardBg: '#f8fafc', text: '#1e293b', textSecondary: '#64748b', border: '#e2e8f0', accent: '#3b82f6', positive: '#16a34a', negative: '#dc2626' };
+  
+  const handleAdd = () => {
+    if (!alertValue || !alertName) return;
+    const newAlert = {
+      id: Date.now(),
+      name: alertName,
+      type: alertType,
+      metric: alertMetric,
+      condition: alertCondition,
+      value: parseFloat(alertValue),
+      enabled: true,
+      createdAt: new Date().toISOString(),
+      triggered: false
+    };
+    onAddAlert(newAlert);
+    setAlertName('');
+    setAlertValue('');
+  };
+  
+  const metricOptions = {
+    score: [{ value: 'dayTrading', label: 'Day Trading Score' }, { value: 'swing', label: 'Swing Score' }, { value: 'hodl', label: 'HODL Score' }],
+    price: [{ value: 'btc', label: 'Bitcoin (BTC)' }, { value: 'eth', label: 'Ethereum (ETH)' }, { value: 'sol', label: 'Solana (SOL)' }],
+    indicator: [{ value: 'fearGreed', label: 'Fear & Greed' }, { value: 'funding', label: 'Funding Rate' }, { value: 'dominance', label: 'BTC Dominance' }]
+  };
+  
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: t.bg, borderRadius: '16px', maxWidth: '420px', width: '100%', maxHeight: '85vh', overflow: 'auto', border: `1px solid ${t.border}` }}>
+        <div style={{ padding: '16px', borderBottom: `1px solid ${t.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ margin: 0, color: t.text, fontSize: '16px', fontWeight: '700' }}>🔔 Alerty</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: t.textSecondary, fontSize: '24px', cursor: 'pointer' }}>×</button>
+        </div>
+        
+        <div style={{ padding: '16px' }}>
+          {/* Add new alert */}
+          <div style={{ marginBottom: '20px', padding: '14px', background: t.cardBg, borderRadius: '12px' }}>
+            <div style={{ fontSize: '12px', fontWeight: '600', color: t.text, marginBottom: '12px' }}>➕ Nowy alert</div>
+            
+            <input type="text" placeholder="Nazwa alertu" value={alertName} onChange={e => setAlertName(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: `1px solid ${t.border}`, background: t.bg, color: t.text, fontSize: '12px', marginBottom: '10px', boxSizing: 'border-box' }} />
+            
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+              {['score', 'price', 'indicator'].map(type => (
+                <button key={type} onClick={() => { setAlertType(type); setAlertMetric(metricOptions[type][0].value); }} style={{ flex: 1, padding: '8px', borderRadius: '6px', border: alertType === type ? `2px solid ${t.accent}` : `1px solid ${t.border}`, background: alertType === type ? `${t.accent}20` : t.bg, color: alertType === type ? t.accent : t.textSecondary, fontSize: '10px', fontWeight: '600', cursor: 'pointer' }}>
+                  {type === 'score' ? '📊 Score' : type === 'price' ? '💰 Cena' : '📈 Wskaźnik'}
+                </button>
+              ))}
+            </div>
+            
+            <select value={alertMetric} onChange={e => setAlertMetric(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: `1px solid ${t.border}`, background: t.bg, color: t.text, fontSize: '12px', marginBottom: '10px' }}>
+              {metricOptions[alertType].map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+            </select>
+            
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+              <select value={alertCondition} onChange={e => setAlertCondition(e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: `1px solid ${t.border}`, background: t.bg, color: t.text, fontSize: '12px' }}>
+                <option value="below">Spadnie poniżej</option>
+                <option value="above">Wzrośnie powyżej</option>
+              </select>
+              <input type="number" placeholder="Wartość" value={alertValue} onChange={e => setAlertValue(e.target.value)} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: `1px solid ${t.border}`, background: t.bg, color: t.text, fontSize: '12px' }} />
+            </div>
+            
+            <button onClick={handleAdd} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: 'none', background: t.accent, color: '#fff', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>➕ Dodaj alert</button>
+          </div>
+          
+          {/* Active alerts */}
+          <div style={{ fontSize: '12px', fontWeight: '600', color: t.text, marginBottom: '10px' }}>📋 Aktywne alerty ({alerts.length})</div>
+          
+          {alerts.length === 0 ? (
+            <div style={{ padding: '20px', textAlign: 'center', color: t.textSecondary, fontSize: '12px' }}>Brak aktywnych alertów</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {alerts.map(alert => (
+                <div key={alert.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: t.cardBg, borderRadius: '10px', borderLeft: `4px solid ${alert.condition === 'below' ? t.negative : t.positive}` }}>
+                  <div>
+                    <div style={{ fontSize: '12px', fontWeight: '600', color: t.text }}>{alert.name}</div>
+                    <div style={{ fontSize: '10px', color: t.textSecondary }}>{alert.condition === 'below' ? '↓' : '↑'} {alert.value} • {alert.metric}</div>
+                  </div>
+                  <button onClick={() => onDeleteAlert(alert.id)} style={{ padding: '6px 10px', borderRadius: '6px', border: 'none', background: `${t.negative}20`, color: t.negative, fontSize: '10px', fontWeight: '600', cursor: 'pointer' }}>🗑️</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 };
@@ -423,6 +581,13 @@ function App() {
   const [chartView, setChartView] = useState('both');
   const [taInterval, setTaInterval] = useState('1D');
   
+  // ============== ALERTS STATE ==============
+  const [alerts, setAlerts] = useState([]);
+  const [alertHistory, setAlertHistory] = useState([]);
+  const [showAlertPanel, setShowAlertPanel] = useState(false);
+  const [activeToast, setActiveToast] = useState(null);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  
   // ============== PORTFOLIO STATE ==============
   const [portfolioApiKey, setPortfolioApiKey] = useState('');
   const [portfolioSecretKey, setPortfolioSecretKey] = useState('');
@@ -446,14 +611,27 @@ function App() {
   const [tradePrice, setTradePrice] = useState('');
   const [tradeResult, setTradeResult] = useState(null);
   
-  // Load API keys on mount
+  // Load saved data on mount
   useEffect(() => {
-    const saved = loadApiKeys();
-    if (saved.apiKey && saved.secretKey) {
-      setPortfolioApiKey(saved.apiKey);
-      setPortfolioSecretKey(saved.secretKey);
+    const savedKeys = loadApiKeys();
+    if (savedKeys.apiKey && savedKeys.secretKey) {
+      setPortfolioApiKey(savedKeys.apiKey);
+      setPortfolioSecretKey(savedKeys.secretKey);
+    }
+    setAlerts(loadAlerts());
+    setAlertHistory(loadAlertHistory());
+    
+    // Request notification permission
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().then(perm => setNotificationsEnabled(perm === 'granted'));
+    } else if ('Notification' in window) {
+      setNotificationsEnabled(Notification.permission === 'granted');
     }
   }, []);
+  
+  // Save alerts when changed
+  useEffect(() => { saveAlerts(alerts); }, [alerts]);
+  useEffect(() => { saveAlertHistory(alertHistory); }, [alertHistory]);
   
   // Mock data
   const mockData = { dxy: { value: 103.42, change: -1.8 }, liquidations: { long: 45.2, short: 12.8, total: 58 } };
@@ -474,6 +652,56 @@ function App() {
   }, []);
 
   useEffect(() => { fetchAllData(); const interval = setInterval(fetchAllData, 60000); return () => clearInterval(interval); }, [fetchAllData]);
+
+  // ============== ALERT CHECK ==============
+  const checkAlerts = useCallback(() => {
+    if (!cgData || alerts.length === 0) return;
+    
+    const dayScore = calculateDayTradingScore();
+    const swingScoreVal = calculateSwingScore();
+    const hodlScoreVal = calculateHodlScore();
+    
+    const currentValues = {
+      dayTrading: dayScore,
+      swing: swingScoreVal,
+      hodl: hodlScoreVal,
+      btc: cgData?.btcPrice?.value || 0,
+      eth: cgData?.ethPrice?.value || 0,
+      sol: cgData?.solPrice?.value || 0,
+      fearGreed: cgData?.fearGreed?.value || 50,
+      funding: binanceData?.fundingRate?.value || 0,
+      dominance: cgData?.btcDominance?.value || 50
+    };
+    
+    alerts.forEach(alert => {
+      if (!alert.enabled || alert.triggered) return;
+      
+      const currentValue = currentValues[alert.metric];
+      if (currentValue === undefined) return;
+      
+      const shouldTrigger = alert.condition === 'below' 
+        ? currentValue < alert.value 
+        : currentValue > alert.value;
+      
+      if (shouldTrigger) {
+        const message = `${alert.metric}: ${currentValue} ${alert.condition === 'below' ? '<' : '>'} ${alert.value}`;
+        
+        // Show toast
+        setActiveToast({ name: alert.name, message });
+        
+        // Browser notification
+        if (notificationsEnabled && 'Notification' in window) {
+          new Notification(`🔔 ${alert.name}`, { body: message, icon: '🎯' });
+        }
+        
+        // Update alert and history
+        setAlerts(prev => prev.map(a => a.id === alert.id ? { ...a, triggered: true } : a));
+        setAlertHistory(prev => [...prev, { ...alert, triggeredAt: new Date().toISOString(), value: currentValue }]);
+      }
+    });
+  }, [cgData, binanceData, alerts, notificationsEnabled]);
+  
+  useEffect(() => { checkAlerts(); }, [cgData, binanceData, checkAlerts]);
 
   // ============== PORTFOLIO FUNCTIONS ==============
   const connectPortfolio = async () => {
@@ -598,6 +826,10 @@ function App() {
   const swingScore = calculateSwingScore();
   const hodlScore = calculateHodlScore();
   
+  // Alert handlers
+  const handleAddAlert = (alert) => { setAlerts(prev => [...prev, alert]); };
+  const handleDeleteAlert = (id) => { setAlerts(prev => prev.filter(a => a.id !== id)); };
+  
   const tabs = [
     { id: 'crypto', label: '₿ Crypto' },
     { id: 'structure', label: '📊 Structure' },
@@ -620,15 +852,24 @@ function App() {
           <span style={{ fontSize: '9px', color: t.textSecondary }}>{lastUpdate ? `${lastUpdate.toLocaleTimeString('pl-PL')}` : 'Ładowanie...'}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {/* Alert Bell */}
+          <button onClick={() => setShowAlertPanel(true)} style={{ position: 'relative', background: t.cardBg, border: `1px solid ${t.border}`, borderRadius: '8px', padding: '5px 8px', cursor: 'pointer', fontSize: '12px', color: t.text }}>
+            🔔
+            {alerts.filter(a => a.enabled && !a.triggered).length > 0 && (
+              <span style={{ position: 'absolute', top: '-4px', right: '-4px', width: '16px', height: '16px', borderRadius: '50%', background: t.accent, color: '#fff', fontSize: '9px', fontWeight: '700', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {alerts.filter(a => a.enabled && !a.triggered).length}
+              </span>
+            )}
+          </button>
           <button onClick={fetchAllData} disabled={loading} style={{ background: t.cardBg, border: `1px solid ${t.border}`, borderRadius: '8px', padding: '5px 8px', cursor: 'pointer', fontSize: '12px', color: t.text }}>{loading ? '⏳' : '🔄'}</button>
           <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} style={{ background: t.cardBg, border: `1px solid ${t.border}`, borderRadius: '8px', padding: '5px 8px', cursor: 'pointer', fontSize: '12px' }}>{theme === 'dark' ? '☀️' : '🌙'}</button>
         </div>
       </div>
 
-      {/* Three Scores */}
+      {/* Three Scores - IMPROVED LAYOUT */}
       <div style={{ padding: '12px' }}>
         <Card theme={theme}>
-          <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
             <MiniScoreGauge score={dayTradingScore} label="Day" icon="🎯" subtitle="godziny-dni" onHelp={() => setHelpModal('dayTradingScore')} theme={theme} />
             <MiniScoreGauge score={swingScore} label="Swing" icon="📊" subtitle="tygodnie" onHelp={() => setHelpModal('swingScore')} theme={theme} />
             <MiniScoreGauge score={hodlScore} label="HODL" icon="🏦" subtitle="miesiące" onHelp={() => setHelpModal('hodlScore')} theme={theme} />
@@ -687,7 +928,7 @@ function App() {
           </div>
         )}
 
-        {/* STRUCTURE TAB */}
+        {/* STRUCTURE TAB - REORDERED: Indicators BEFORE Gainers/Losers */}
         {activeTab === 'structure' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {/* Market Breadth */}
@@ -706,49 +947,7 @@ function App() {
               </Card>
             )}
 
-            {/* Top Gainers */}
-            {msData?.topGainers && (
-              <Card theme={theme}>
-                <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px', color: t.positive }}>🚀 Top Gainers 24h</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                  {msData.topGainers.slice(0, 10).map((coin, i) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', background: t.bg, borderRadius: '6px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '10px', color: t.textSecondary, width: '16px' }}>{i + 1}.</span>
-                        <span style={{ fontWeight: '600', fontSize: '11px' }}>{coin.name}</span>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <span style={{ color: t.positive, fontWeight: '700', fontSize: '12px' }}>+{coin.change24h}%</span>
-                        <div style={{ fontSize: '9px', color: t.textSecondary }}>${coin.price < 1 ? coin.price.toFixed(6) : coin.price.toFixed(2)}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            )}
-
-            {/* Top Losers */}
-            {msData?.topLosers && (
-              <Card theme={theme}>
-                <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px', color: t.negative }}>📉 Top Losers 24h</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                  {msData.topLosers.slice(0, 10).map((coin, i) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', background: t.bg, borderRadius: '6px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '10px', color: t.textSecondary, width: '16px' }}>{i + 1}.</span>
-                        <span style={{ fontWeight: '600', fontSize: '11px' }}>{coin.name}</span>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <span style={{ color: t.negative, fontWeight: '700', fontSize: '12px' }}>{coin.change24h}%</span>
-                        <div style={{ fontSize: '9px', color: t.textSecondary }}>${coin.price < 1 ? coin.price.toFixed(6) : coin.price.toFixed(2)}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            )}
-
-            {/* Altseason Indicators */}
+            {/* Altseason Indicators - MOVED UP */}
             {altseasonData && (
               <Card theme={theme}>
                 <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '10px' }}>🌊 Altseason Indicators <LiveTag theme={theme} /></div>
@@ -777,7 +976,7 @@ function App() {
               </Card>
             )}
 
-            {/* Stablecoin Flows */}
+            {/* Stablecoin Flows - MOVED UP */}
             {altseasonData?.stablecoins && (
               <Card theme={theme}>
                 <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '10px' }}>💵 Stablecoin Flows (7d) <LiveTag theme={theme} /></div>
@@ -815,6 +1014,48 @@ function App() {
                     : altseasonData.stablecoins.usdt.change7d + altseasonData.stablecoins.usdc.change7d < -1 
                     ? '🔴 Kapitał odpływa z ekosystemu' 
                     : '🟡 Stabilny przepływ kapitału'}
+                </div>
+              </Card>
+            )}
+
+            {/* Top Gainers - MOVED DOWN */}
+            {msData?.topGainers && (
+              <Card theme={theme}>
+                <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px', color: t.positive }}>🚀 Top Gainers 24h</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                  {msData.topGainers.slice(0, 10).map((coin, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', background: t.bg, borderRadius: '6px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '10px', color: t.textSecondary, width: '16px' }}>{i + 1}.</span>
+                        <span style={{ fontWeight: '600', fontSize: '11px' }}>{coin.name}</span>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <span style={{ color: t.positive, fontWeight: '700', fontSize: '12px' }}>+{coin.change24h}%</span>
+                        <div style={{ fontSize: '9px', color: t.textSecondary }}>${coin.price < 1 ? coin.price.toFixed(6) : coin.price.toFixed(2)}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+
+            {/* Top Losers - MOVED DOWN */}
+            {msData?.topLosers && (
+              <Card theme={theme}>
+                <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px', color: t.negative }}>📉 Top Losers 24h</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                  {msData.topLosers.slice(0, 10).map((coin, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', background: t.bg, borderRadius: '6px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '10px', color: t.textSecondary, width: '16px' }}>{i + 1}.</span>
+                        <span style={{ fontWeight: '600', fontSize: '11px' }}>{coin.name}</span>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <span style={{ color: t.negative, fontWeight: '700', fontSize: '12px' }}>{coin.change24h}%</span>
+                        <div style={{ fontSize: '9px', color: t.textSecondary }}>${coin.price < 1 ? coin.price.toFixed(6) : coin.price.toFixed(2)}</div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </Card>
             )}
@@ -900,31 +1141,26 @@ function App() {
         {activeTab === 'charts' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <Card theme={theme}>
-              <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px' }}>🎯 Wybierz parę</div>
-              <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                {['BINANCE:BTCUSDT', 'BINANCE:ETHUSDT', 'BINANCE:SOLUSDT', 'CRYPTOCAP:TOTAL', 'CRYPTOCAP:BTC.D'].map(s => (
-                  <button key={s} onClick={() => setTvSymbol(s)} style={{ padding: '5px 10px', borderRadius: '6px', border: 'none', background: tvSymbol === s ? t.accent : t.bg, color: tvSymbol === s ? '#fff' : t.textSecondary, fontSize: '10px', fontWeight: '500', cursor: 'pointer' }}>{s.split(':')[1]}</button>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                {[{ s: 'BINANCE:BTCUSDT', l: 'BTC' }, { s: 'BINANCE:ETHUSDT', l: 'ETH' }, { s: 'BINANCE:SOLUSDT', l: 'SOL' }, { s: 'CRYPTOCAP:TOTAL', l: 'Total' }, { s: 'CRYPTOCAP:BTC.D', l: 'BTC.D' }].map(item => (
+                  <button key={item.s} onClick={() => setTvSymbol(item.s)} style={{ padding: '6px 10px', borderRadius: '6px', border: tvSymbol === item.s ? `2px solid ${t.accent}` : `1px solid ${t.border}`, background: tvSymbol === item.s ? `${t.accent}20` : t.bg, color: tvSymbol === item.s ? t.accent : t.textSecondary, fontSize: '10px', fontWeight: '600', cursor: 'pointer' }}>{item.l}</button>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: '6px', marginBottom: '10px' }}>
+                {['chart', 'analysis', 'both'].map(view => (
+                  <button key={view} onClick={() => setChartView(view)} style={{ flex: 1, padding: '6px', borderRadius: '6px', border: chartView === view ? `2px solid ${t.accent}` : `1px solid ${t.border}`, background: chartView === view ? `${t.accent}20` : t.bg, color: chartView === view ? t.accent : t.textSecondary, fontSize: '10px', fontWeight: '600', cursor: 'pointer' }}>{view === 'chart' ? '📈 Chart' : view === 'analysis' ? '📊 Analysis' : '📈📊 Both'}</button>
                 ))}
               </div>
             </Card>
-            <Card theme={theme}>
-              <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px' }}>👁️ Widok</div>
-              <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                {[{ id: 'analysis', label: '📊 Analiza' }, { id: 'chart', label: '📈 Wykres' }, { id: 'both', label: '🔀 Oba' }].map(v => (
-                  <button key={v.id} onClick={() => setChartView(v.id)} style={{ padding: '5px 10px', borderRadius: '6px', border: 'none', background: chartView === v.id ? t.accent : t.bg, color: chartView === v.id ? '#fff' : t.textSecondary, fontSize: '10px', fontWeight: '500', cursor: 'pointer' }}>{v.label}</button>
-                ))}
-              </div>
-            </Card>
+            {(chartView === 'chart' || chartView === 'both') && <TradingViewChart symbol={tvSymbol} theme={theme} />}
             {(chartView === 'analysis' || chartView === 'both') && (
-              <Card theme={theme}>
-                <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '4px' }}>📊 Analiza Techniczna - {tvSymbol.split(':')[1]} <LiveTag theme={theme} /></div>
-                <TradingViewTechnicalAnalysis symbol={tvSymbol} theme={theme} interval={taInterval} />
-              </Card>
-            )}
-            {(chartView === 'chart' || chartView === 'both') && (
-              <Card theme={theme}>
-                <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px' }}>📈 Wykres - {tvSymbol.split(':')[1]}</div>
-                <TradingViewChart symbol={tvSymbol} theme={theme} />
+              <Card helpKey="technicalAnalysis" onHelp={setHelpModal} theme={theme}>
+                <div style={{ display: 'flex', gap: '4px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                  {['15m', '1H', '4H', '1D', '1W'].map(int => (
+                    <button key={int} onClick={() => setTaInterval(int === '15m' ? '15' : int === '1H' ? '60' : int === '4H' ? '240' : int === '1D' ? 'D' : 'W')} style={{ padding: '5px 10px', borderRadius: '6px', border: `1px solid ${t.border}`, background: t.bg, color: t.textSecondary, fontSize: '10px', cursor: 'pointer' }}>{int}</button>
+                  ))}
+                </div>
+                <TradingViewTechnicalAnalysis symbol={tvSymbol} interval={taInterval} theme={theme} />
               </Card>
             )}
           </div>
@@ -933,47 +1169,53 @@ function App() {
         {/* PORTFOLIO TAB */}
         {activeTab === 'portfolio' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            
-            {/* API Settings */}
-            <Card helpKey="portfolio" onHelp={setHelpModal} theme={theme}>
-              <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>🔐 Binance API</span>
-                {portfolioConnected && <ApiStatusBadge status="live" label="Połączony" theme={theme} />}
-              </div>
-              
-              {!portfolioConnected ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <input type={showApiKeys ? 'text' : 'password'} placeholder="API Key" value={portfolioApiKey} onChange={e => setPortfolioApiKey(e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: `1px solid ${t.border}`, background: t.bg, color: t.text, fontSize: '12px' }} />
-                  <input type={showApiKeys ? 'text' : 'password'} placeholder="Secret Key" value={portfolioSecretKey} onChange={e => setPortfolioSecretKey(e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: `1px solid ${t.border}`, background: t.bg, color: t.text, fontSize: '12px' }} />
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={() => setShowApiKeys(!showApiKeys)} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: `1px solid ${t.border}`, background: t.bg, color: t.textSecondary, fontSize: '11px', cursor: 'pointer' }}>{showApiKeys ? '🙈 Ukryj' : '👁️ Pokaż'}</button>
-                    <button onClick={connectPortfolio} disabled={portfolioLoading} style={{ flex: 2, padding: '8px', borderRadius: '8px', border: 'none', background: t.accent, color: '#fff', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}>{portfolioLoading ? '⏳ Łączenie...' : '🔗 Połącz'}</button>
+            {!portfolioConnected ? (
+              <Card helpKey="portfolio" onHelp={setHelpModal} theme={theme}>
+                <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '12px' }}>🔐 Połącz z Binance</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ padding: '10px', background: `${t.warning}15`, borderRadius: '8px', fontSize: '10px', color: t.warning }}>
+                    ⚠️ Użyj kluczy z ograniczonymi uprawnieniami. Nigdy nie włączaj Withdrawals!
                   </div>
-                  {portfolioError && <div style={{ padding: '8px', background: `${t.negative}20`, borderRadius: '6px', color: t.negative, fontSize: '11px' }}>❌ {portfolioError}</div>}
-                  <div style={{ fontSize: '9px', color: t.textSecondary, padding: '8px', background: t.bg, borderRadius: '6px' }}>
-                    ⚠️ Klucze są przechowywane lokalnie w Twojej przeglądarce (LocalStorage). Nigdy nie włączaj uprawnień "Withdrawals"!
-                  </div>
+                  <input type="text" placeholder="API Key" value={portfolioApiKey} onChange={e => setPortfolioApiKey(e.target.value)} style={{ padding: '12px', borderRadius: '8px', border: `1px solid ${t.border}`, background: t.bg, color: t.text, fontSize: '12px' }} />
+                  <input type={showApiKeys ? 'text' : 'password'} placeholder="Secret Key" value={portfolioSecretKey} onChange={e => setPortfolioSecretKey(e.target.value)} style={{ padding: '12px', borderRadius: '8px', border: `1px solid ${t.border}`, background: t.bg, color: t.text, fontSize: '12px' }} />
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '10px', color: t.textSecondary }}>
+                    <input type="checkbox" checked={showApiKeys} onChange={e => setShowApiKeys(e.target.checked)} /> Pokaż klucze
+                  </label>
+                  {portfolioError && <div style={{ padding: '8px', background: `${t.negative}15`, borderRadius: '6px', color: t.negative, fontSize: '11px' }}>❌ {portfolioError}</div>}
+                  <button onClick={connectPortfolio} disabled={portfolioLoading} style={{ padding: '12px', borderRadius: '8px', border: 'none', background: t.accent, color: '#fff', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
+                    {portfolioLoading ? '⏳ Łączenie...' : '🔗 Połącz'}
+                  </button>
                 </div>
-              ) : (
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={refreshPortfolio} disabled={portfolioLoading} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: `1px solid ${t.border}`, background: t.bg, color: t.text, fontSize: '11px', cursor: 'pointer' }}>{portfolioLoading ? '⏳' : '🔄 Odśwież'}</button>
-                  <button onClick={disconnectPortfolio} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: `1px solid ${t.negative}`, background: 'transparent', color: t.negative, fontSize: '11px', cursor: 'pointer' }}>🔓 Rozłącz</button>
-                </div>
-              )}
-            </Card>
-
-            {portfolioConnected && (
+              </Card>
+            ) : (
               <>
+                {/* Connected Header */}
+                <Card theme={theme}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '16px' }}>✅</span>
+                      <div>
+                        <div style={{ fontSize: '12px', fontWeight: '600' }}>Binance Connected</div>
+                        <div style={{ fontSize: '9px', color: t.textSecondary }}>Spot & Futures</div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button onClick={refreshPortfolio} disabled={portfolioLoading} style={{ padding: '6px 10px', borderRadius: '6px', border: `1px solid ${t.border}`, background: t.bg, color: t.text, fontSize: '10px', cursor: 'pointer' }}>{portfolioLoading ? '⏳' : '🔄'}</button>
+                      <button onClick={disconnectPortfolio} style={{ padding: '6px 10px', borderRadius: '6px', border: 'none', background: t.negative, color: '#fff', fontSize: '10px', cursor: 'pointer' }}>Rozłącz</button>
+                    </div>
+                  </div>
+                </Card>
+
                 {/* Spot Balance */}
-                {spotBalance?.balances && (
+                {spotBalance?.balances && spotBalance.balances.length > 0 && (
                   <Card theme={theme}>
                     <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '10px' }}>💰 Spot Balance</div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       {spotBalance.balances.slice(0, 10).map((b, i) => (
-                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px', background: t.bg, borderRadius: '6px' }}>
-                          <span style={{ fontWeight: '600', fontSize: '12px' }}>{b.asset}</span>
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px', background: t.bg, borderRadius: '6px' }}>
+                          <span style={{ fontWeight: '600', fontSize: '11px' }}>{b.asset}</span>
                           <div style={{ textAlign: 'right' }}>
-                            <div style={{ fontSize: '12px', fontWeight: '600' }}>{b.total.toFixed(b.total < 1 ? 6 : 2)}</div>
+                            <div style={{ fontSize: '11px', fontWeight: '600' }}>{b.total.toFixed(b.total < 1 ? 6 : 4)}</div>
                             {b.locked > 0 && <div style={{ fontSize: '9px', color: t.warning }}>🔒 {b.locked.toFixed(4)}</div>}
                           </div>
                         </div>
@@ -988,10 +1230,10 @@ function App() {
                     <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '10px' }}>📊 Futures Balance</div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       {futuresBalance.balances.map((b, i) => (
-                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px', background: t.bg, borderRadius: '6px' }}>
-                          <span style={{ fontWeight: '600', fontSize: '12px' }}>{b.asset}</span>
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px', background: t.bg, borderRadius: '6px' }}>
+                          <span style={{ fontWeight: '600', fontSize: '11px' }}>{b.asset}</span>
                           <div style={{ textAlign: 'right' }}>
-                            <div style={{ fontSize: '12px', fontWeight: '600' }}>{b.balance.toFixed(2)}</div>
+                            <div style={{ fontSize: '11px', fontWeight: '600' }}>{b.balance.toFixed(2)}</div>
                             {b.crossUnPnl !== 0 && <div style={{ fontSize: '9px', color: b.crossUnPnl >= 0 ? t.positive : t.negative }}>PnL: {b.crossUnPnl >= 0 ? '+' : ''}{b.crossUnPnl.toFixed(2)}</div>}
                           </div>
                         </div>
@@ -1097,11 +1339,17 @@ function App() {
 
       {/* Footer */}
       <div style={{ textAlign: 'center', padding: '14px', color: t.textSecondary, fontSize: '9px', position: 'fixed', bottom: 0, left: 0, right: 0, background: t.bg, borderTop: `1px solid ${t.border}` }}>
-        💡 v3.0 Portfolio & Trading | Auto-refresh: 60s
+        💡 v3.1 Alerts & Improved UI | Auto-refresh: 60s
       </div>
 
       {/* Help Modal */}
       {helpModal && <HelpModal helpKey={helpModal} onClose={() => setHelpModal(null)} theme={theme} />}
+      
+      {/* Alert Panel */}
+      {showAlertPanel && <AlertPanel alerts={alerts} onAddAlert={handleAddAlert} onDeleteAlert={handleDeleteAlert} onClose={() => setShowAlertPanel(false)} theme={theme} />}
+      
+      {/* Alert Toast */}
+      {activeToast && <AlertToast alert={activeToast} onClose={() => setActiveToast(null)} theme={theme} />}
     </div>
   );
 }
