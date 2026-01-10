@@ -535,9 +535,7 @@ const PositionCalculator = ({ theme, onHelp }) => {
     <div style={{ padding: '12px', background: t.cardBg, borderRadius: '12px', border: `1px solid ${t.border}`, marginTop: '10px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
         <div style={{ fontSize: '12px', fontWeight: '600' }}>🧮 Position Size Calculator</div>
-        {onHelp && (
-          <button onClick={onHelp} style={{ width: '20px', height: '20px', borderRadius: '50%', background: theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', border: 'none', color: t.textSecondary, fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>?</button>
-        )}
+        <button onClick={onHelp} style={{ width: '22px', height: '22px', borderRadius: '50%', background: theme === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)', border: `1px solid ${t.border}`, color: t.text, fontSize: '12px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>?</button>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
         <div>
@@ -582,13 +580,13 @@ const PositionCalculator = ({ theme, onHelp }) => {
 const SectorAnalysis = ({ topGainers, theme }) => {
   const t = theme === 'dark' ? { bg: '#0f172a', cardBg: '#1e293b', text: '#f1f5f9', textSecondary: '#94a3b8', border: '#334155', positive: '#22c55e', negative: '#ef4444', warning: '#f59e0b' } : { bg: '#f8fafc', cardBg: '#ffffff', text: '#1e293b', textSecondary: '#64748b', border: '#e2e8f0', positive: '#16a34a', negative: '#dc2626', warning: '#d97706' };
   
-  // Rozszerzona lista keywords dla lepszego dopasowania
+  // Keywords - dokładne symbole (bez '1000' który matchuje za dużo)
   const sectorKeywords = {
-    'AI': ['FET', 'AGIX', 'OCEAN', 'NMR', 'RNDR', 'TAO', 'ARKM', 'WLD', 'CTXC', 'AIOZ', 'AI', 'GPT', 'LPT', 'GRT', 'ORAI', 'PAAL', 'OLAS'],
-    'MEME': ['DOGE', 'SHIB', 'PEPE', 'FLOKI', 'BONK', 'WIF', 'MEME', 'TURBO', 'NEIRO', 'PNUT', 'ACT', '1000', 'COW', 'POPCAT', 'MOG', 'BRETT', 'LADYS', 'BABYDOGE', 'ELON', 'AKITA', 'KISHU', 'SNEK', 'MYRO'],
-    'DeFi': ['UNI', 'AAVE', 'COMP', 'MKR', 'SNX', 'CRV', 'SUSHI', 'YFI', '1INCH', 'DYDX', 'GMX', 'PENDLE', 'LDO', 'RPL', 'SSV', 'FXS', 'LQTY', 'BAL', 'RUNE', 'OSMO', 'JUP', 'RAY', 'ORCA'],
-    'L1/L2': ['SOL', 'AVAX', 'MATIC', 'ARB', 'OP', 'APT', 'SUI', 'SEI', 'INJ', 'TIA', 'STRK', 'NEAR', 'FTM', 'ATOM', 'DOT', 'ADA', 'XRP', 'TRX', 'ALGO', 'HBAR', 'EOS', 'XLM', 'VET', 'ONE', 'EGLD', 'KAVA', 'ROSE', 'ZK', 'MANTA', 'METIS', 'CELO', 'ZIL'],
-    'Gaming': ['AXS', 'SAND', 'MANA', 'ENJ', 'GALA', 'IMX', 'ILV', 'PIXEL', 'PORTAL', 'SUPER', 'BEAM', 'RONIN', 'PRIME', 'MAGIC', 'YGG', 'PYR', 'ALICE', 'ATLAS', 'GODS', 'GMT', 'LOKA', 'SLP', 'RARE', 'HIGH']
+    'AI': ['FET', 'AGIX', 'OCEAN', 'NMR', 'RNDR', 'TAO', 'ARKM', 'WLD', 'CTXC', 'AIOZ', 'LPT', 'GRT', 'ORAI', 'PAAL', 'OLAS', 'TURBO'],
+    'MEME': ['DOGE', 'SHIB', 'PEPE', 'FLOKI', 'BONK', 'WIF', 'MEME', 'NEIRO', 'PNUT', 'ACT', 'COW', 'POPCAT', 'MOG', 'BRETT', 'LADYS', 'BABYDOGE', 'ELON', 'AKITA', 'KISHU', 'SNEK', 'MYRO', 'BOME', 'SLERF', 'DOGS', 'HMSTR', 'CATI'],
+    'DeFi': ['UNI', 'AAVE', 'COMP', 'MKR', 'SNX', 'CRV', 'SUSHI', 'YFI', '1INCH', 'DYDX', 'GMX', 'PENDLE', 'LDO', 'RPL', 'SSV', 'FXS', 'LQTY', 'BAL', 'RUNE', 'OSMO', 'JUP', 'RAY', 'ORCA', 'CAKE', 'BANANA', 'JOE'],
+    'L1/L2': ['SOL', 'AVAX', 'MATIC', 'ARB', 'OP', 'APT', 'SUI', 'SEI', 'INJ', 'TIA', 'STRK', 'NEAR', 'FTM', 'ATOM', 'DOT', 'ADA', 'XRP', 'TRX', 'ALGO', 'HBAR', 'EOS', 'XLM', 'VET', 'ONE', 'EGLD', 'KAVA', 'ROSE', 'ZK', 'MANTA', 'METIS', 'CELO', 'ZIL', 'POL', 'TON', 'KAS', 'TAO'],
+    'Gaming': ['AXS', 'SAND', 'MANA', 'ENJ', 'GALA', 'IMX', 'ILV', 'PIXEL', 'PORTAL', 'SUPER', 'BEAM', 'RONIN', 'PRIME', 'MAGIC', 'YGG', 'PYR', 'ALICE', 'ATLAS', 'GODS', 'GMT', 'LOKA', 'SLP', 'RARE', 'HIGH', 'BIGTIME', 'XAI', 'BLUR', 'NFT']
   };
   
   const sectorScores = {};
@@ -599,9 +597,14 @@ const SectorAnalysis = ({ topGainers, theme }) => {
   
   if (topGainers && topGainers.length > 0) {
     topGainers.forEach(coin => {
-      const symbol = (coin.name || coin.symbol || '').toUpperCase().replace('USDT', '');
+      // Czyścimy symbol - usuwamy USDT i prefix 1000
+      let symbol = (coin.name || coin.symbol || '').toUpperCase().replace('USDT', '');
+      if (symbol.startsWith('1000')) symbol = symbol.substring(4); // usuń prefix 1000
+      
       Object.entries(sectorKeywords).forEach(([sector, keywords]) => {
-        if (keywords.some(kw => symbol.includes(kw) || symbol === kw)) {
+        // Dokładniejsze matchowanie - symbol musi być równy keyword lub zaczynać się od keyword
+        const matched = keywords.some(kw => symbol === kw || symbol.startsWith(kw + '3') || symbol.startsWith(kw + 'UP') || symbol.startsWith(kw + 'DOWN'));
+        if (matched) {
           sectorScores[sector] += parseFloat(coin.change24h) || 0;
           sectorCoins[sector].push({ name: symbol, change: parseFloat(coin.change24h) });
         }
