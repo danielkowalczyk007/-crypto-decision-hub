@@ -370,6 +370,7 @@ const helpContent = {
   portfolio: { title: '💼 Portfolio', emoji: '💼', description: 'Twoje portfolio na Binance.', interpretation: [{ condition: 'Połączony', signal: 'bullish', text: '🟢 API działa' }, { condition: 'Błąd', signal: 'bearish', text: '🔴 Sprawdź klucze' }], tip: 'Nigdy nie włączaj Withdrawals!', source: 'Binance Auth API' },
   alerts: { title: '🔔 System Alertów', emoji: '🔔', description: 'Ustaw powiadomienia dla wskaźników.', interpretation: [{ condition: 'Score Alert', signal: 'neutral', text: '🔔 Powiadomienie gdy Day/Swing/HODL przekroczy próg' }, { condition: 'Price Alert', signal: 'neutral', text: '🔔 Alert cenowy BTC/ETH/SOL' }, { condition: 'F&G Alert', signal: 'neutral', text: '🔔 Alert na ekstrema sentymentu' }], tip: 'Włącz powiadomienia przeglądarki!', source: 'Local' },
   marketBreadth: { title: '📊 Market Breadth', emoji: '📊', description: 'Stosunek coinów rosnących do spadających na Binance. Pokazuje ogólny sentyment rynku.', interpretation: [{ condition: '>65% Bullish', signal: 'bullish', text: '🟢 Silny rynek - większość rośnie' }, { condition: '45-65% Bullish', signal: 'neutral', text: '🟡 Neutralny - rynek mieszany' }, { condition: '<45% Bullish', signal: 'bearish', text: '🔴 Słaby rynek - większość spada' }], tip: 'Breadth potwierdza siłę trendu. Rally przy niskim breadth jest słabe.', source: 'Binance API' },
+  positionCalculator: { title: '🧮 Position Size Calculator', emoji: '🧮', description: 'Kalkulator wielkości pozycji na podstawie zasady zarządzania ryzykiem.', interpretation: [{ condition: 'Ryzyko 1-2%', signal: 'bullish', text: '🟢 Konserwatywne - zalecane' }, { condition: 'Ryzyko 3-5%', signal: 'neutral', text: '🟡 Umiarkowane' }, { condition: 'Ryzyko >5%', signal: 'bearish', text: '🔴 Agresywne - wysokie ryzyko' }], tip: 'Zasada: nigdy nie ryzykuj więcej niż 1-2% kapitału na jedną transakcję. Dźwignia zwiększa zyski ALE też straty!', source: 'Risk Management' }
   altseasonIndex: { title: '🌊 Altseason Index', emoji: '🌊', description: 'Wskaźnik 0-100 mierzący siłę altcoinów vs BTC. Oparty na dominacji BTC i ETH/BTC ratio.', interpretation: [{ condition: '>75', signal: 'bullish', text: '🟢 ALTSEASON - alty dominują' }, { condition: '50-75', signal: 'bullish', text: '🟢 Alty rosną - rotacja z BTC' }, { condition: '40-50', signal: 'neutral', text: '🟡 Neutralny - obserwuj' }, { condition: '<40', signal: 'bearish', text: '🔴 BTC Season - trzymaj BTC' }], tip: 'Historycznie altseason następuje po silnym wzroście BTC.', source: 'CoinGecko' },
   ethBtcRatio: { title: '⚗️ ETH/BTC Ratio', emoji: '⚗️', description: 'Stosunek ceny ETH do BTC. Kluczowy wskaźnik siły altcoinów.', interpretation: [{ condition: '>0.055', signal: 'bullish', text: '🟢 ETH silny - altseason sygnał' }, { condition: '0.035-0.055', signal: 'neutral', text: '🟡 Neutralny zakres' }, { condition: '<0.035', signal: 'bearish', text: '🔴 ETH słaby - BTC dominuje' }], tip: 'Rosnący ETH/BTC często poprzedza altseason.', source: 'CoinGecko' },
   total2: { title: '📈 Total2 Market Cap', emoji: '📈', description: 'Całkowita kapitalizacja rynku bez BTC. Mierzy wartość wszystkich altcoinów.', interpretation: [{ condition: 'Rośnie + BTC Dom spada', signal: 'bullish', text: '🟢 Kapitał płynie do altów' }, { condition: 'Stabilne', signal: 'neutral', text: '🟡 Rynek w konsolidacji' }, { condition: 'Spada + BTC Dom rośnie', signal: 'bearish', text: '🔴 Rotacja do BTC - risk off' }], tip: 'Total2 > $1.5T historycznie sygnalizuje silny altseason.', source: 'CoinGecko' },
@@ -510,7 +511,7 @@ const AIInsight = ({ cgData, binanceData, altseasonData, defiData, dayScore, swi
   );
 };
 
-const PositionCalculator = ({ theme }) => {
+const PositionCalculator = ({ theme, onHelp }) => {
   const [capital, setCapital] = useState('1000');
   const [riskPercent, setRiskPercent] = useState('2');
   const [entryPrice, setEntryPrice] = useState('');
@@ -532,7 +533,12 @@ const PositionCalculator = ({ theme }) => {
   
   return (
     <div style={{ padding: '12px', background: t.cardBg, borderRadius: '12px', border: `1px solid ${t.border}`, marginTop: '10px' }}>
-      <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '10px' }}>🧮 Position Size Calculator</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+        <div style={{ fontSize: '12px', fontWeight: '600' }}>🧮 Position Size Calculator</div>
+        {onHelp && (
+          <button onClick={onHelp} style={{ width: '20px', height: '20px', borderRadius: '50%', background: theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', border: 'none', color: t.textSecondary, fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>?</button>
+        )}
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
         <div>
           <label style={{ fontSize: '9px', color: t.textSecondary }}>Kapitał ($)</label>
@@ -574,26 +580,28 @@ const PositionCalculator = ({ theme }) => {
 };
 
 const SectorAnalysis = ({ topGainers, theme }) => {
-  const t = theme === 'dark' ? { bg: '#0f172a', cardBg: '#1e293b', text: '#f1f5f9', textSecondary: '#94a3b8', border: '#334155', positive: '#22c55e', negative: '#ef4444' } : { bg: '#f8fafc', cardBg: '#ffffff', text: '#1e293b', textSecondary: '#64748b', border: '#e2e8f0', positive: '#16a34a', negative: '#dc2626' };
+  const t = theme === 'dark' ? { bg: '#0f172a', cardBg: '#1e293b', text: '#f1f5f9', textSecondary: '#94a3b8', border: '#334155', positive: '#22c55e', negative: '#ef4444', warning: '#f59e0b' } : { bg: '#f8fafc', cardBg: '#ffffff', text: '#1e293b', textSecondary: '#64748b', border: '#e2e8f0', positive: '#16a34a', negative: '#dc2626', warning: '#d97706' };
   
+  // Rozszerzona lista keywords dla lepszego dopasowania
   const sectorKeywords = {
-    'AI': ['FET', 'AGIX', 'OCEAN', 'NMR', 'RNDR', 'TAO', 'ARKM', 'WLD', 'CTXC', 'AIOZ'],
-    'MEME': ['DOGE', 'SHIB', 'PEPE', 'FLOKI', 'BONK', 'WIF', 'MEME', 'TURBO', 'NEIRO', 'PNUT', 'ACT', '1000'],
-    'DeFi': ['UNI', 'AAVE', 'COMP', 'MKR', 'SNX', 'CRV', 'SUSHI', 'YFI', '1INCH', 'DYDX', 'GMX', 'PENDLE'],
-    'L1/L2': ['SOL', 'AVAX', 'MATIC', 'ARB', 'OP', 'APT', 'SUI', 'SEI', 'INJ', 'TIA', 'STRK', 'NEAR', 'FTM'],
-    'Gaming': ['AXS', 'SAND', 'MANA', 'ENJ', 'GALA', 'IMX', 'ILV', 'PIXEL', 'PORTAL', 'SUPER', 'BEAM', 'RONIN']
+    'AI': ['FET', 'AGIX', 'OCEAN', 'NMR', 'RNDR', 'TAO', 'ARKM', 'WLD', 'CTXC', 'AIOZ', 'AI', 'GPT', 'LPT', 'GRT', 'ORAI', 'PAAL', 'OLAS'],
+    'MEME': ['DOGE', 'SHIB', 'PEPE', 'FLOKI', 'BONK', 'WIF', 'MEME', 'TURBO', 'NEIRO', 'PNUT', 'ACT', '1000', 'COW', 'POPCAT', 'MOG', 'BRETT', 'LADYS', 'BABYDOGE', 'ELON', 'AKITA', 'KISHU', 'SNEK', 'MYRO'],
+    'DeFi': ['UNI', 'AAVE', 'COMP', 'MKR', 'SNX', 'CRV', 'SUSHI', 'YFI', '1INCH', 'DYDX', 'GMX', 'PENDLE', 'LDO', 'RPL', 'SSV', 'FXS', 'LQTY', 'BAL', 'RUNE', 'OSMO', 'JUP', 'RAY', 'ORCA'],
+    'L1/L2': ['SOL', 'AVAX', 'MATIC', 'ARB', 'OP', 'APT', 'SUI', 'SEI', 'INJ', 'TIA', 'STRK', 'NEAR', 'FTM', 'ATOM', 'DOT', 'ADA', 'XRP', 'TRX', 'ALGO', 'HBAR', 'EOS', 'XLM', 'VET', 'ONE', 'EGLD', 'KAVA', 'ROSE', 'ZK', 'MANTA', 'METIS', 'CELO', 'ZIL'],
+    'Gaming': ['AXS', 'SAND', 'MANA', 'ENJ', 'GALA', 'IMX', 'ILV', 'PIXEL', 'PORTAL', 'SUPER', 'BEAM', 'RONIN', 'PRIME', 'MAGIC', 'YGG', 'PYR', 'ALICE', 'ATLAS', 'GODS', 'GMT', 'LOKA', 'SLP', 'RARE', 'HIGH']
   };
   
   const sectorScores = {};
   const sectorCoins = {};
   
+  // Zawsze inicjalizuj sektory
+  Object.keys(sectorKeywords).forEach(sector => { sectorScores[sector] = 0; sectorCoins[sector] = []; });
+  
   if (topGainers && topGainers.length > 0) {
-    Object.keys(sectorKeywords).forEach(sector => { sectorScores[sector] = 0; sectorCoins[sector] = []; });
-    
     topGainers.forEach(coin => {
       const symbol = (coin.name || coin.symbol || '').toUpperCase().replace('USDT', '');
       Object.entries(sectorKeywords).forEach(([sector, keywords]) => {
-        if (keywords.some(kw => symbol.includes(kw))) {
+        if (keywords.some(kw => symbol.includes(kw) || symbol === kw)) {
           sectorScores[sector] += parseFloat(coin.change24h) || 0;
           sectorCoins[sector].push({ name: symbol, change: parseFloat(coin.change24h) });
         }
@@ -603,22 +611,29 @@ const SectorAnalysis = ({ topGainers, theme }) => {
   
   const sortedSectors = Object.entries(sectorScores).filter(([_, score]) => score !== 0).sort((a, b) => b[1] - a[1]).slice(0, 4);
   
-  if (sortedSectors.length === 0) return null;
-  
+  // Zawsze renderuj komponent - pokazuj komunikat jeśli brak danych
   return (
     <div style={{ padding: '12px', background: t.cardBg, borderRadius: '12px', border: `1px solid ${t.border}`, marginBottom: '10px' }}>
       <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '10px' }}>🏷️ Top Sektory (wg Gainers)</div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
-        {sortedSectors.map(([sector, score], i) => (
-          <div key={sector} style={{ padding: '10px', background: t.bg, borderRadius: '8px', borderLeft: `4px solid ${score > 0 ? t.positive : t.negative}` }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-              <span style={{ fontSize: '11px', fontWeight: '600' }}>{i + 1}. {sector}</span>
-              <span style={{ fontSize: '10px', fontWeight: '700', color: score > 0 ? t.positive : t.negative }}>{score > 0 ? '+' : ''}{score.toFixed(1)}%</span>
+      {sortedSectors.length === 0 ? (
+        <div style={{ padding: '16px', background: t.bg, borderRadius: '8px', textAlign: 'center' }}>
+          <div style={{ fontSize: '20px', marginBottom: '6px' }}>📊</div>
+          <div style={{ fontSize: '11px', color: t.textSecondary, marginBottom: '4px' }}>Brak wyraźnych trendów sektorowych</div>
+          <div style={{ fontSize: '9px', color: t.textSecondary, opacity: 0.7 }}>Top gainers nie pasują do zdefiniowanych sektorów</div>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+          {sortedSectors.map(([sector, score], i) => (
+            <div key={sector} style={{ padding: '10px', background: t.bg, borderRadius: '8px', borderLeft: `4px solid ${score > 0 ? t.positive : t.negative}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                <span style={{ fontSize: '11px', fontWeight: '600' }}>{i + 1}. {sector}</span>
+                <span style={{ fontSize: '10px', fontWeight: '700', color: score > 0 ? t.positive : t.negative }}>{score > 0 ? '+' : ''}{score.toFixed(1)}%</span>
+              </div>
+              <div style={{ fontSize: '8px', color: t.textSecondary }}>{sectorCoins[sector]?.slice(0, 3).map(c => c.name).join(', ')}</div>
             </div>
-            <div style={{ fontSize: '8px', color: t.textSecondary }}>{sectorCoins[sector]?.slice(0, 3).map(c => c.name).join(', ')}</div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -1359,7 +1374,7 @@ function App() {
               </Card>
             </div>
             {/* Position Size Calculator */}
-            <PositionCalculator theme={theme} />
+            <PositionCalculator theme={theme} onHelp={() => setHelpModal('positionCalculator')} />
           </div>
         )}
 
