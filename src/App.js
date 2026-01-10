@@ -312,6 +312,25 @@ const fetchMarketStructure = async () => {
   } catch (error) { return null; }
 };
 
+// Fetch CoinGecko trending categories
+const fetchCoinGeckoCategories = async () => {
+  try {
+    const response = await fetch('https://api.coingecko.com/api/v3/coins/categories?order=market_cap_change_24h_desc');
+    if (!response.ok) return null;
+    const data = await response.json();
+    // Top 10 kategorii z największą zmianą
+    const topCategories = data.slice(0, 10).map(cat => ({
+      id: cat.id,
+      name: cat.name,
+      marketCap: cat.market_cap,
+      marketCapChange24h: cat.market_cap_change_24h?.toFixed(2) || '0',
+      volume24h: cat.volume_24h,
+      topCoins: cat.top_3_coins || []
+    }));
+    return { categories: topCategories, source: 'CoinGecko' };
+  } catch (error) { return null; }
+};
+
 // ============== TRADINGVIEW WIDGETS ==============
 const TradingViewChart = ({ symbol = 'BINANCE:BTCUSDT', theme = 'dark' }) => {
   const containerRef = useRef(null);
@@ -819,6 +838,7 @@ function App() {
   const [fredData, setFredData] = useState(null);
   const [msData, setMsData] = useState(null);
   const [altseasonData, setAltseasonData] = useState(null);
+  const [cgCategories, setCgCategories] = useState(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(null);
   
@@ -889,13 +909,14 @@ function App() {
   const fetchAllData = useCallback(async () => {
     setLoading(true);
     setApiStatus({ coingecko: 'loading', binance: 'loading', defillama: 'loading', fred: 'loading', marketStructure: 'loading' });
-    const [cg, bn, defi, fred, ms, altseason] = await Promise.all([fetchCoinGeckoData(), fetchBinanceData(), fetchDefiLlamaData(), fetchFredData(), fetchMarketStructure(), fetchAltseasonData()]);
+    const [cg, bn, defi, fred, ms, altseason, cgCat] = await Promise.all([fetchCoinGeckoData(), fetchBinanceData(), fetchDefiLlamaData(), fetchFredData(), fetchMarketStructure(), fetchAltseasonData(), fetchCoinGeckoCategories()]);
     if (cg) { setCgData(cg); setApiStatus(prev => ({ ...prev, coingecko: 'live' })); } else { setApiStatus(prev => ({ ...prev, coingecko: 'error' })); }
     if (bn) { setBinanceData(bn); setApiStatus(prev => ({ ...prev, binance: 'live' })); } else { setApiStatus(prev => ({ ...prev, binance: 'error' })); }
     if (defi) { setDefiData(defi); setApiStatus(prev => ({ ...prev, defillama: 'live' })); } else { setApiStatus(prev => ({ ...prev, defillama: 'error' })); }
     if (fred) { setFredData(fred); setApiStatus(prev => ({ ...prev, fred: 'live' })); } else { setApiStatus(prev => ({ ...prev, fred: 'error' })); }
     if (ms) { setMsData(ms); setApiStatus(prev => ({ ...prev, marketStructure: 'live' })); } else { setApiStatus(prev => ({ ...prev, marketStructure: 'error' })); }
     if (altseason) { setAltseasonData(altseason); }
+    if (cgCat) { setCgCategories(cgCat); }
     setLastUpdate(new Date());
     setLoading(false);
   }, []);
@@ -1082,6 +1103,7 @@ function App() {
   const tabs = [
     { id: 'crypto', label: '₿ Crypto' },
     { id: 'structure', label: '📊 Structure' },
+    { id: 'movers', label: '🔥 Movers' },
     { id: 'macro', label: '🏦 Macro' },
     { id: 'defi', label: '🦙 DeFi' },
     { id: 'derivatives', label: '📉 Deriv' },
@@ -1258,14 +1280,39 @@ function App() {
                 </div>
               </Card>
             )}
+          </div>
+        )}
 
-            {/* Sector Analysis - NEW */}
+        {/* MOVERS TAB - NEW */}
+        {activeTab === 'movers' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {/* Sector Analysis - Binance based */}
             <SectorAnalysis topGainers={msData?.topGainers} theme={theme} />
 
-            {/* Top Gainers - MOVED DOWN */}
+            {/* CoinGecko Trending Categories */}
+            {cgCategories?.categories && (
+              <Card theme={theme} signalColor={t.accent} isLive={!!cgCategories}>
+                <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '10px' }}>🏆 Trending Categories <span style={{ fontSize: '9px', color: t.textSecondary, fontWeight: '400' }}>(CoinGecko)</span></div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {cgCategories.categories.slice(0, 8).map((cat, i) => (
+                    <div key={cat.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', background: t.bg, borderRadius: '8px', borderLeft: `3px solid ${parseFloat(cat.marketCapChange24h) > 0 ? t.positive : t.negative}` }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '10px', color: t.textSecondary, width: '18px' }}>{i + 1}.</span>
+                        <span style={{ fontWeight: '600', fontSize: '11px' }}>{cat.name}</span>
+                      </div>
+                      <span style={{ color: parseFloat(cat.marketCapChange24h) > 0 ? t.positive : t.negative, fontWeight: '700', fontSize: '12px' }}>
+                        {parseFloat(cat.marketCapChange24h) > 0 ? '+' : ''}{cat.marketCapChange24h}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+
+            {/* Top Gainers */}
             {msData?.topGainers && (
               <Card helpKey="topGainers" onHelp={setHelpModal} theme={theme} signalColor={t.positive} isLive={!!msData?.topGainers}>
-                <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px', color: t.positive }}>🚀 Top Gainers 24h</div>
+                <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px', color: t.positive }}>🚀 Top Gainers 24h <span style={{ fontSize: '9px', color: t.textSecondary, fontWeight: '400' }}>(Binance)</span></div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                   {msData.topGainers.slice(0, 10).map((coin, i) => (
                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', background: t.bg, borderRadius: '6px' }}>
@@ -1283,10 +1330,10 @@ function App() {
               </Card>
             )}
 
-            {/* Top Losers - MOVED DOWN */}
+            {/* Top Losers */}
             {msData?.topLosers && (
               <Card helpKey="topLosers" onHelp={setHelpModal} theme={theme} signalColor={t.negative} isLive={!!msData?.topLosers}>
-                <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px', color: t.negative }}>📉 Top Losers 24h</div>
+                <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px', color: t.negative }}>📉 Top Losers 24h <span style={{ fontSize: '9px', color: t.textSecondary, fontWeight: '400' }}>(Binance)</span></div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                   {msData.topLosers.slice(0, 10).map((coin, i) => (
                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', background: t.bg, borderRadius: '6px' }}>
