@@ -2079,21 +2079,21 @@ function App() {
         {activeTab === 'crypto' && (
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
-              <Card helpKey="btcPrice" onHelp={setHelpModal} theme={theme} isLive signalColor={(cgData?.btcPrice?.change || 0) > 2 ? 'positive' : (cgData?.btcPrice?.change || 0) < -2 ? 'negative' : undefined}>
+              <Card helpKey="btcPrice" onHelp={setHelpModal} theme={theme} isLive signalColor={(cgData?.btcPrice?.change || 0) > 0 ? 'positive' : (cgData?.btcPrice?.change || 0) < 0 ? 'negative' : undefined}>
                 <div className={`text-[10px] ${t.muted} mb-1`}>₿ Bitcoin</div>
                 {loading ? <SkeletonLoader width="w-24" height="h-6" theme={theme} /> : <>
                   <div className={`text-lg font-bold ${t.text}`}>{formatPrice(cgData?.btcPrice?.value)}</div>
                   <div className={`text-xs font-semibold ${(cgData?.btcPrice?.change || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatChange(cgData?.btcPrice?.change)}</div>
                 </>}
               </Card>
-              <Card helpKey="ethPrice" onHelp={setHelpModal} theme={theme} isLive signalColor={(cgData?.ethPrice?.change || 0) > 2 ? 'positive' : (cgData?.ethPrice?.change || 0) < -2 ? 'negative' : undefined}>
+              <Card helpKey="ethPrice" onHelp={setHelpModal} theme={theme} isLive signalColor={(cgData?.ethPrice?.change || 0) > 0 ? 'positive' : (cgData?.ethPrice?.change || 0) < 0 ? 'negative' : undefined}>
                 <div className={`text-[10px] ${t.muted} mb-1`}>Ξ Ethereum</div>
                 {loading ? <SkeletonLoader width="w-24" height="h-6" theme={theme} /> : <>
                   <div className={`text-lg font-bold ${t.text}`}>{formatPrice(cgData?.ethPrice?.value)}</div>
                   <div className={`text-xs font-semibold ${(cgData?.ethPrice?.change || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatChange(cgData?.ethPrice?.change)}</div>
                 </>}
               </Card>
-              <Card helpKey="solPrice" onHelp={setHelpModal} theme={theme} isLive signalColor={(cgData?.solPrice?.change || 0) > 2 ? 'positive' : (cgData?.solPrice?.change || 0) < -2 ? 'negative' : undefined}>
+              <Card helpKey="solPrice" onHelp={setHelpModal} theme={theme} isLive signalColor={(cgData?.solPrice?.change || 0) > 0 ? 'positive' : (cgData?.solPrice?.change || 0) < 0 ? 'negative' : undefined}>
                 <div className={`text-[10px] ${t.muted} mb-1`}>◎ Solana</div>
                 {loading ? <SkeletonLoader width="w-24" height="h-6" theme={theme} /> : <>
                   <div className={`text-lg font-bold ${t.text}`}>{formatPrice(cgData?.solPrice?.value)}</div>
@@ -2126,7 +2126,7 @@ function App() {
         {/* Structure Tab */}
         {activeTab === 'structure' && (
           <div className="space-y-3">
-            <Card helpKey="altseasonIndex" onHelp={setHelpModal} theme={theme} isLive>
+            <Card helpKey="altseasonIndex" onHelp={setHelpModal} theme={theme} isLive signalColor={(altseasonData?.altseasonIndex || 50) > 55 ? 'positive' : (altseasonData?.altseasonIndex || 50) < 45 ? 'negative' : 'warning'}>
               <div className={`text-xs font-semibold mb-3 ${t.text}`}>🌊 Altseason Indicators</div>
               {loading ? <SkeletonLoader width="w-full" height="h-20" theme={theme} /> : (
                 <div className="grid grid-cols-2 gap-2">
@@ -2141,7 +2141,7 @@ function App() {
               )}
             </Card>
             <EthBtcHistoryChart data={ethBtcHistory} timeframe={ethBtcTimeframe} onTimeframeChange={setEthBtcTimeframe} loading={ethBtcLoading} onHelp={() => setHelpModal('ethBtcHistory')} theme={theme} />
-            <Card helpKey="stablecoinFlows" onHelp={setHelpModal} theme={theme} isLive>
+            <Card helpKey="stablecoinFlows" onHelp={setHelpModal} theme={theme} isLive signalColor={((altseasonData?.usdt?.change || 0) + (altseasonData?.usdc?.change || 0)) > 0 ? 'positive' : ((altseasonData?.usdt?.change || 0) + (altseasonData?.usdc?.change || 0)) < 0 ? 'negative' : undefined}>
               <div className={`text-xs font-semibold mb-3 ${t.text}`}>💵 Stablecoin Flows</div>
               {loading ? <SkeletonLoader width="w-full" height="h-16" theme={theme} /> : (
                 <div className="grid grid-cols-2 gap-2">
@@ -2163,7 +2163,7 @@ function App() {
         {activeTab === 'pulse' && (
           <div className="space-y-3">
             <SectorAnalysis topGainers={msData?.topGainers} theme={theme} />
-            <Card helpKey="topGainers" onHelp={setHelpModal} theme={theme} isLive>
+            <Card helpKey="topGainers" onHelp={setHelpModal} theme={theme} isLive signalColor="positive">
               <div className="flex justify-between items-center mb-3">
                 <div className={`text-xs font-semibold ${t.text}`}>🚀 Top Gainers 24h</div>
                 <button onClick={() => setShowAllGainers(!showAllGainers)} className={`text-[9px] ${t.muted} bg-transparent border-none cursor-pointer hover:text-blue-500`}>{showAllGainers ? 'Mniej' : 'Więcej'}</button>
@@ -2179,7 +2179,7 @@ function App() {
                 </div>
               )}
             </Card>
-            <Card helpKey="topLosers" onHelp={setHelpModal} theme={theme} isLive>
+            <Card helpKey="topLosers" onHelp={setHelpModal} theme={theme} isLive signalColor="negative">
               <div className="flex justify-between items-center mb-3">
                 <div className={`text-xs font-semibold ${t.text}`}>📉 Top Losers 24h</div>
                 <button onClick={() => setShowAllLosers(!showAllLosers)} className={`text-[9px] ${t.muted} bg-transparent border-none cursor-pointer hover:text-blue-500`}>{showAllLosers ? 'Mniej' : 'Więcej'}</button>
@@ -2195,7 +2195,7 @@ function App() {
                 </div>
               )}
             </Card>
-            <Card helpKey="marketBreadth" onHelp={setHelpModal} theme={theme} isLive>
+            <Card helpKey="marketBreadth" onHelp={setHelpModal} theme={theme} isLive signalColor={parseFloat(msData?.bullishPercent || 50) > 50 ? 'positive' : parseFloat(msData?.bullishPercent || 50) < 50 ? 'negative' : 'warning'}>
               <div className={`text-xs font-semibold mb-3 ${t.text}`}>📊 Market Breadth</div>
               {loading ? <SkeletonLoader width="w-full" height="h-16" theme={theme} /> : (
                 <div className="grid grid-cols-3 gap-2 text-center">
@@ -2243,7 +2243,7 @@ function App() {
                 <div className={`text-xs font-semibold ${(defiData?.tvl?.change || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>{defiData?.tvl?.change >= 0 ? '+' : ''}{defiData?.tvl?.change || '--'}% 7d</div>
               </>}
             </Card>
-            <Card helpKey="stablecoinSupply" onHelp={setHelpModal} theme={theme} isLive signalColor={(defiData?.stablecoinSupply?.change || 0) > 2 ? 'positive' : (defiData?.stablecoinSupply?.change || 0) < -2 ? 'negative' : undefined}>
+            <Card helpKey="stablecoinSupply" onHelp={setHelpModal} theme={theme} isLive signalColor={(defiData?.stablecoinSupply?.change || 0) > 0 ? 'positive' : (defiData?.stablecoinSupply?.change || 0) < 0 ? 'negative' : undefined}>
               <div className={`text-xs font-semibold mb-2 ${t.text}`}>💵 Stablecoin Supply</div>
               {loading ? <SkeletonLoader width="w-24" height="h-8" theme={theme} /> : <>
                 <div className={`text-2xl font-bold ${t.text}`}>${defiData?.stablecoinSupply?.value || '--'}B</div>
@@ -2272,7 +2272,7 @@ function App() {
         {/* Derivatives Tab */}
         {activeTab === 'derivatives' && (
           <div className="space-y-3">
-            <Card helpKey="fundingRate" onHelp={setHelpModal} theme={theme} isLive signalColor={(binanceData?.fundingRate?.value || 0) < 0 ? 'positive' : (binanceData?.fundingRate?.value || 0) > 0.03 ? 'negative' : undefined}>
+            <Card helpKey="fundingRate" onHelp={setHelpModal} theme={theme} isLive signalColor={(binanceData?.fundingRate?.value || 0) < 0 ? 'positive' : (binanceData?.fundingRate?.value || 0) > 0 ? 'negative' : undefined}>
               <div className={`text-xs font-semibold mb-2 ${t.text}`}>💰 BTC Funding Rate</div>
               {loading ? <SkeletonLoader width="w-24" height="h-8" theme={theme} /> : <>
                 <div className={`text-2xl font-bold ${(binanceData?.fundingRate?.value || 0) < 0 ? 'text-green-500' : (binanceData?.fundingRate?.value || 0) > 0.03 ? 'text-red-500' : t.text}`}>{binanceData?.fundingRate?.value || '--'}%</div>
@@ -2283,7 +2283,7 @@ function App() {
               <div className={`text-xs font-semibold mb-2 ${t.text}`}>📊 BTC Open Interest</div>
               {loading ? <SkeletonLoader width="w-24" height="h-8" theme={theme} /> : <div className={`text-2xl font-bold ${t.text}`}>${binanceData?.openInterest?.value || '--'}B</div>}
             </Card>
-            <Card helpKey="longShortRatio" onHelp={setHelpModal} theme={theme} isLive signalColor={(binanceData?.longShortRatio?.value || 1) < 0.9 ? 'positive' : (binanceData?.longShortRatio?.value || 1) > 1.8 ? 'negative' : undefined}>
+            <Card helpKey="longShortRatio" onHelp={setHelpModal} theme={theme} isLive signalColor={(binanceData?.longShortRatio?.value || 1) < 1 ? 'positive' : (binanceData?.longShortRatio?.value || 1) > 1 ? 'negative' : undefined}>
               <div className={`text-xs font-semibold mb-2 ${t.text}`}>⚖️ Long/Short Ratio</div>
               {loading ? <SkeletonLoader width="w-16" height="h-8" theme={theme} /> : <>
                 <div className={`text-2xl font-bold ${t.text}`}>{binanceData?.longShortRatio?.value || '--'}</div>
