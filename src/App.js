@@ -519,6 +519,349 @@ const PWAUpdateBanner = ({ theme, onUpdate, onDismiss }) => {
   );
 };
 
+// ============== COMPARISON MODE ==============
+const COMPARISON_COINS = [
+  { id: 'bitcoin', symbol: 'BTC', name: 'Bitcoin', color: '#F7931A' },
+  { id: 'ethereum', symbol: 'ETH', name: 'Ethereum', color: '#627EEA' },
+  { id: 'solana', symbol: 'SOL', name: 'Solana', color: '#00FFA3' },
+  { id: 'binancecoin', symbol: 'BNB', name: 'BNB', color: '#F3BA2F' },
+  { id: 'ripple', symbol: 'XRP', name: 'XRP', color: '#23292F' },
+  { id: 'cardano', symbol: 'ADA', name: 'Cardano', color: '#0033AD' },
+  { id: 'avalanche-2', symbol: 'AVAX', name: 'Avalanche', color: '#E84142' },
+  { id: 'polkadot', symbol: 'DOT', name: 'Polkadot', color: '#E6007A' },
+  { id: 'dogecoin', symbol: 'DOGE', name: 'Dogecoin', color: '#C2A633' },
+  { id: 'chainlink', symbol: 'LINK', name: 'Chainlink', color: '#2A5ADA' },
+  { id: 'matic-network', symbol: 'MATIC', name: 'Polygon', color: '#8247E5' },
+  { id: 'uniswap', symbol: 'UNI', name: 'Uniswap', color: '#FF007A' },
+  { id: 'litecoin', symbol: 'LTC', name: 'Litecoin', color: '#BFBBBB' },
+  { id: 'near', symbol: 'NEAR', name: 'NEAR', color: '#00C08B' },
+  { id: 'aptos', symbol: 'APT', name: 'Aptos', color: '#4CD7D0' },
+  { id: 'arbitrum', symbol: 'ARB', name: 'Arbitrum', color: '#28A0F0' },
+  { id: 'optimism', symbol: 'OP', name: 'Optimism', color: '#FF0420' },
+  { id: 'sui', symbol: 'SUI', name: 'Sui', color: '#4DA2FF' },
+  { id: 'render-token', symbol: 'RNDR', name: 'Render', color: '#E52D27' },
+  { id: 'injective-protocol', symbol: 'INJ', name: 'Injective', color: '#00F2FE' }
+];
+
+const fetchComparisonData = async (coinIds) => {
+  if (!coinIds || coinIds.length === 0) return null;
+  try {
+    const response = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${coinIds.join(',')}&order=market_cap_desc&sparkline=true&price_change_percentage=1h,24h,7d,30d`);
+    if (!response.ok) throw new Error('API Error');
+    const data = await response.json();
+    return data.map(coin => ({
+      id: coin.id,
+      symbol: coin.symbol.toUpperCase(),
+      name: coin.name,
+      price: coin.current_price,
+      change1h: coin.price_change_percentage_1h_in_currency,
+      change24h: coin.price_change_percentage_24h_in_currency,
+      change7d: coin.price_change_percentage_7d_in_currency,
+      change30d: coin.price_change_percentage_30d_in_currency,
+      volume: coin.total_volume,
+      marketCap: coin.market_cap,
+      sparkline: coin.sparkline_in_7d?.price || [],
+      high24h: coin.high_24h,
+      low24h: coin.low_24h,
+      ath: coin.ath,
+      athChange: coin.ath_change_percentage,
+      color: COMPARISON_COINS.find(c => c.id === coin.id)?.color || '#6366f1'
+    }));
+  } catch (error) {
+    console.error('Comparison fetch error:', error);
+    return null;
+  }
+};
+
+const ComparisonMode = ({ theme, onHelp }) => {
+  const t = useTheme(theme);
+  const [selectedCoins, setSelectedCoins] = useState(['bitcoin', 'ethereum', 'solana']);
+  const [comparisonData, setComparisonData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [viewMode, setViewMode] = useState('table');
+  const [sortBy, setSortBy] = useState('marketCap');
+  const [sortDir, setSortDir] = useState('desc');
+
+  useEffect(() => {
+    const loadData = async () => {
+      if (selectedCoins.length === 0) { setComparisonData(null); return; }
+      setLoading(true);
+      const data = await fetchComparisonData(selectedCoins);
+      setComparisonData(data);
+      setLoading(false);
+    };
+    loadData();
+    const interval = setInterval(loadData, 60000);
+    return () => clearInterval(interval);
+  }, [selectedCoins]);
+
+  const toggleCoin = (coinId) => {
+    if (selectedCoins.includes(coinId)) {
+      if (selectedCoins.length > 1) setSelectedCoins(selectedCoins.filter(id => id !== coinId));
+    } else {
+      if (selectedCoins.length < 5) setSelectedCoins([...selectedCoins, coinId]);
+    }
+  };
+
+  const formatPrice = (p) => { if (!p) return '$--'; if (p >= 1000) return `$${p.toLocaleString('en-US', { maximumFractionDigits: 0 })}`; if (p >= 1) return `$${p.toFixed(2)}`; return `$${p.toFixed(4)}`; };
+  const formatChange = (c) => { if (c === undefined || c === null) return '--'; return c >= 0 ? `+${c.toFixed(1)}%` : `${c.toFixed(1)}%`; };
+  const formatVolume = (v) => { if (!v) return '--'; if (v >= 1e9) return `$${(v / 1e9).toFixed(1)}B`; if (v >= 1e6) return `$${(v / 1e6).toFixed(0)}M`; return `$${v.toLocaleString()}`; };
+  const formatMcap = (m) => { if (!m) return '--'; if (m >= 1e12) return `$${(m / 1e12).toFixed(2)}T`; if (m >= 1e9) return `$${(m / 1e9).toFixed(1)}B`; return `$${(m / 1e6).toFixed(0)}M`; };
+
+  const sortedData = comparisonData ? [...comparisonData].sort((a, b) => {
+    const aVal = a[sortBy] || 0;
+    const bVal = b[sortBy] || 0;
+    return sortDir === 'desc' ? bVal - aVal : aVal - bVal;
+  }) : [];
+
+  const handleSort = (key) => {
+    if (sortBy === key) setSortDir(sortDir === 'desc' ? 'asc' : 'desc');
+    else { setSortBy(key); setSortDir('desc'); }
+  };
+
+  // Normalize sparkline data for overlay chart
+  const normalizedChartData = comparisonData ? (() => {
+    const maxLen = Math.max(...comparisonData.map(c => c.sparkline?.length || 0));
+    const points = [];
+    for (let i = 0; i < maxLen; i += Math.ceil(maxLen / 50)) {
+      const point = { index: i };
+      comparisonData.forEach(coin => {
+        if (coin.sparkline && coin.sparkline.length > 0) {
+          const idx = Math.floor(i * coin.sparkline.length / maxLen);
+          const firstPrice = coin.sparkline[0];
+          const currentPrice = coin.sparkline[idx] || firstPrice;
+          point[coin.symbol] = firstPrice > 0 ? ((currentPrice - firstPrice) / firstPrice * 100) : 0;
+        }
+      });
+      points.push(point);
+    }
+    return points;
+  })() : [];
+
+  // Radar chart data
+  const radarMetrics = ['change24h', 'change7d', 'volume', 'marketCap'];
+  const radarData = comparisonData ? (() => {
+    const maxValues = {};
+    radarMetrics.forEach(m => { maxValues[m] = Math.max(...comparisonData.map(c => Math.abs(c[m] || 0))); });
+    return comparisonData.map(coin => ({
+      ...coin,
+      normalized: radarMetrics.reduce((acc, m) => {
+        acc[m] = maxValues[m] > 0 ? (Math.abs(coin[m] || 0) / maxValues[m]) * 100 : 0;
+        return acc;
+      }, {})
+    }));
+  })() : [];
+
+  return (
+    <div className="space-y-3">
+      {/* Coin Selector */}
+      <div className={`p-3 ${t.card} rounded-xl border ${t.border}`}>
+        <div className="flex justify-between items-center mb-3">
+          <div className={`text-xs font-semibold ${t.text}`}>🎯 Wybierz coiny (max 5)</div>
+          <span className={`text-[10px] px-2 py-1 rounded-full ${t.bg} ${t.muted}`}>{selectedCoins.length}/5</span>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {COMPARISON_COINS.map(coin => (
+            <button
+              key={coin.id}
+              onClick={() => toggleCoin(coin.id)}
+              className={`px-2.5 py-1.5 rounded-lg text-[10px] font-semibold cursor-pointer border-2 transition-all ${
+                selectedCoins.includes(coin.id)
+                  ? 'border-blue-500 bg-blue-500/20 text-blue-500'
+                  : `border-transparent ${t.bg} ${t.muted} hover:border-blue-500/50`
+              }`}
+              style={selectedCoins.includes(coin.id) ? { borderColor: coin.color, backgroundColor: `${coin.color}20`, color: coin.color } : {}}
+            >
+              {coin.symbol}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* View Mode Toggle */}
+      <div className="flex gap-2">
+        {[{ id: 'table', icon: '📋', label: 'Tabela' }, { id: 'chart', icon: '📈', label: 'Wykres' }, { id: 'radar', icon: '🎯', label: 'Radar' }].map(mode => (
+          <button
+            key={mode.id}
+            onClick={() => setViewMode(mode.id)}
+            className={`flex-1 py-2.5 rounded-lg border-2 text-[11px] font-semibold cursor-pointer flex items-center justify-center gap-1.5 ${
+              viewMode === mode.id ? 'border-blue-500 bg-blue-500/20 text-blue-500' : `border-transparent ${t.card} ${t.muted}`
+            }`}
+          >
+            <span>{mode.icon}</span> {mode.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Loading State */}
+      {loading && (
+        <div className={`p-8 ${t.card} rounded-xl border ${t.border} text-center`}>
+          <div className="animate-spin text-2xl mb-2">⏳</div>
+          <div className={`text-xs ${t.muted}`}>Ładowanie danych...</div>
+        </div>
+      )}
+
+      {/* Table View */}
+      {!loading && viewMode === 'table' && comparisonData && (
+        <div className={`${t.card} rounded-xl border ${t.border} overflow-hidden`}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-[10px]">
+              <thead>
+                <tr className={`${t.bg} border-b ${t.border}`}>
+                  <th className={`p-2.5 text-left ${t.muted} font-semibold`}>Coin</th>
+                  <th onClick={() => handleSort('price')} className={`p-2.5 text-right ${t.muted} font-semibold cursor-pointer hover:text-blue-500`}>Cena {sortBy === 'price' && (sortDir === 'desc' ? '↓' : '↑')}</th>
+                  <th onClick={() => handleSort('change1h')} className={`p-2.5 text-right ${t.muted} font-semibold cursor-pointer hover:text-blue-500`}>1h {sortBy === 'change1h' && (sortDir === 'desc' ? '↓' : '↑')}</th>
+                  <th onClick={() => handleSort('change24h')} className={`p-2.5 text-right ${t.muted} font-semibold cursor-pointer hover:text-blue-500`}>24h {sortBy === 'change24h' && (sortDir === 'desc' ? '↓' : '↑')}</th>
+                  <th onClick={() => handleSort('change7d')} className={`p-2.5 text-right ${t.muted} font-semibold cursor-pointer hover:text-blue-500`}>7d {sortBy === 'change7d' && (sortDir === 'desc' ? '↓' : '↑')}</th>
+                  <th onClick={() => handleSort('volume')} className={`p-2.5 text-right ${t.muted} font-semibold cursor-pointer hover:text-blue-500`}>Vol {sortBy === 'volume' && (sortDir === 'desc' ? '↓' : '↑')}</th>
+                  <th onClick={() => handleSort('marketCap')} className={`p-2.5 text-right ${t.muted} font-semibold cursor-pointer hover:text-blue-500`}>MCap {sortBy === 'marketCap' && (sortDir === 'desc' ? '↓' : '↑')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedData.map((coin, i) => (
+                  <tr key={coin.id} className={`border-b ${t.border} ${i % 2 === 0 ? '' : t.bg}`}>
+                    <td className="p-2.5">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: coin.color }}></div>
+                        <span className={`font-bold ${t.text}`}>{coin.symbol}</span>
+                        <span className={`${t.muted} hidden sm:inline`}>{coin.name}</span>
+                      </div>
+                    </td>
+                    <td className={`p-2.5 text-right font-bold ${t.text}`}>{formatPrice(coin.price)}</td>
+                    <td className={`p-2.5 text-right font-semibold ${(coin.change1h || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatChange(coin.change1h)}</td>
+                    <td className={`p-2.5 text-right font-semibold ${(coin.change24h || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatChange(coin.change24h)}</td>
+                    <td className={`p-2.5 text-right font-semibold ${(coin.change7d || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatChange(coin.change7d)}</td>
+                    <td className={`p-2.5 text-right ${t.muted}`}>{formatVolume(coin.volume)}</td>
+                    <td className={`p-2.5 text-right ${t.muted}`}>{formatMcap(coin.marketCap)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {/* Summary Row */}
+          <div className={`p-3 ${t.bg} border-t ${t.border} grid grid-cols-3 gap-3 text-center`}>
+            <div>
+              <div className={`text-[9px] ${t.muted}`}>Avg 24h</div>
+              <div className={`text-xs font-bold ${(sortedData.reduce((a, c) => a + (c.change24h || 0), 0) / sortedData.length) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                {formatChange(sortedData.reduce((a, c) => a + (c.change24h || 0), 0) / sortedData.length)}
+              </div>
+            </div>
+            <div>
+              <div className={`text-[9px] ${t.muted}`}>Najlepszy 24h</div>
+              <div className="text-xs font-bold text-green-500">{sortedData.sort((a, b) => (b.change24h || 0) - (a.change24h || 0))[0]?.symbol}</div>
+            </div>
+            <div>
+              <div className={`text-[9px] ${t.muted}`}>Najgorszy 24h</div>
+              <div className="text-xs font-bold text-red-500">{sortedData.sort((a, b) => (a.change24h || 0) - (b.change24h || 0))[0]?.symbol}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Performance Chart View */}
+      {!loading && viewMode === 'chart' && comparisonData && normalizedChartData.length > 0 && (
+        <div className={`p-3 ${t.card} rounded-xl border ${t.border}`}>
+          <div className={`text-xs font-semibold ${t.text} mb-3`}>📈 Performance 7D (% change)</div>
+          <div className="h-52">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={normalizedChartData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#334155' : '#e2e8f0'} vertical={false} />
+                <XAxis dataKey="index" tick={false} axisLine={false} />
+                <YAxis tick={{ fill: theme === 'dark' ? '#94a3b8' : '#64748b', fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v.toFixed(0)}%`} />
+                <Tooltip contentStyle={{ backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff', border: `1px solid ${theme === 'dark' ? '#334155' : '#e2e8f0'}`, borderRadius: '8px', fontSize: '11px' }} formatter={(value, name) => [`${value.toFixed(2)}%`, name]} />
+                {comparisonData.map((coin, i) => (
+                  <Area key={coin.symbol} type="monotone" dataKey={coin.symbol} stroke={coin.color} fill={`${coin.color}30`} strokeWidth={2} />
+                ))}
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+          {/* Legend */}
+          <div className="flex flex-wrap gap-2 mt-3 justify-center">
+            {comparisonData.map(coin => (
+              <div key={coin.symbol} className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded" style={{ backgroundColor: coin.color }}></div>
+                <span className={`text-[10px] ${t.text}`}>{coin.symbol}</span>
+                <span className={`text-[10px] font-semibold ${(coin.change7d || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatChange(coin.change7d)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Radar View */}
+      {!loading && viewMode === 'radar' && radarData.length > 0 && (
+        <div className={`p-3 ${t.card} rounded-xl border ${t.border}`}>
+          <div className={`text-xs font-semibold ${t.text} mb-3`}>🎯 Porównanie metryk</div>
+          <div className="grid grid-cols-2 gap-3">
+            {radarData.map(coin => (
+              <div key={coin.id} className={`p-3 ${t.bg} rounded-lg`}>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: coin.color }}></div>
+                  <span className={`text-sm font-bold ${t.text}`}>{coin.symbol}</span>
+                </div>
+                <div className="space-y-2">
+                  {[
+                    { key: 'change24h', label: '24h Change', value: coin.change24h, normalized: coin.normalized.change24h },
+                    { key: 'change7d', label: '7d Change', value: coin.change7d, normalized: coin.normalized.change7d },
+                    { key: 'volume', label: 'Volume', value: coin.volume, normalized: coin.normalized.volume, format: 'vol' },
+                    { key: 'marketCap', label: 'Market Cap', value: coin.marketCap, normalized: coin.normalized.marketCap, format: 'mcap' }
+                  ].map(metric => (
+                    <div key={metric.key}>
+                      <div className="flex justify-between items-center mb-1">
+                        <span className={`text-[9px] ${t.muted}`}>{metric.label}</span>
+                        <span className={`text-[9px] font-semibold ${metric.format ? t.text : (metric.value || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                          {metric.format === 'vol' ? formatVolume(metric.value) : metric.format === 'mcap' ? formatMcap(metric.value) : formatChange(metric.value)}
+                        </span>
+                      </div>
+                      <div className={`h-1.5 rounded-full ${t.isDark ? 'bg-slate-700' : 'bg-slate-200'} overflow-hidden`}>
+                        <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(metric.normalized, 100)}%`, backgroundColor: coin.color }}></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          {/* Overall ranking */}
+          <div className={`mt-3 p-2.5 ${t.bg} rounded-lg`}>
+            <div className={`text-[9px] ${t.muted} mb-2`}>🏆 Ranking ogólny (suma znormalizowanych metryk)</div>
+            <div className="flex flex-wrap gap-2">
+              {radarData
+                .map(c => ({ ...c, totalScore: Object.values(c.normalized).reduce((a, b) => a + b, 0) }))
+                .sort((a, b) => b.totalScore - a.totalScore)
+                .map((coin, i) => (
+                  <div key={coin.id} className={`flex items-center gap-1.5 px-2 py-1 rounded ${i === 0 ? 'bg-yellow-500/20' : t.card}`}>
+                    <span className={`text-[10px] ${i === 0 ? 'text-yellow-500' : t.muted}`}>#{i + 1}</span>
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: coin.color }}></div>
+                    <span className={`text-[10px] font-semibold ${t.text}`}>{coin.symbol}</span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Empty State */}
+      {!loading && (!comparisonData || comparisonData.length === 0) && (
+        <div className={`p-8 ${t.card} rounded-xl border ${t.border} text-center`}>
+          <div className="text-3xl mb-2">📊</div>
+          <div className={`text-sm ${t.text} mb-1`}>Wybierz coiny do porównania</div>
+          <div className={`text-xs ${t.muted}`}>Kliknij na symbole powyżej</div>
+        </div>
+      )}
+
+      {/* Help Card */}
+      <div className={`p-3 ${t.bg} rounded-lg`}>
+        <div className={`text-[9px] ${t.muted}`}>
+          💡 <strong>Porównanie</strong> pozwala analizować do 5 kryptowalut jednocześnie. 
+          Widok <strong>Tabela</strong> pokazuje kluczowe metryki, <strong>Wykres</strong> porównuje 7-dniową zmianę %, 
+          a <strong>Radar</strong> wizualizuje relatywną siłę każdego coina.
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const AlertPanel = ({ alerts, onAddAlert, onDeleteAlert, onClose, theme }) => {
   const [alertType, setAlertType] = useState('score');
   const [alertMetric, setAlertMetric] = useState('dayTrading');
@@ -787,7 +1130,7 @@ function App() {
   const handleCancelOrder = async (symbol, orderId, market) => { const result = await cancelOrder(portfolioApiKey, portfolioSecretKey, symbol, orderId, market); if (result.success) refreshPortfolio(); };
   const handleClosePosition = async (symbol, positionAmt) => { const result = await closePosition(portfolioApiKey, portfolioSecretKey, symbol, positionAmt); if (result.success) refreshPortfolio(); };
 
-  const tabs = [{ id: 'crypto', label: '₿ Crypto' }, { id: 'structure', label: '📊 Structure' }, { id: 'macro', label: '🏦 Macro' }, { id: 'defi', label: '🦙 DeFi' }, { id: 'derivatives', label: '📊 Deriv' }, { id: 'charts', label: '📈 Charts' }, { id: 'portfolio', label: '💼 Portfolio' }];
+  const tabs = [{ id: 'crypto', label: '₿ Crypto' }, { id: 'structure', label: '📊 Structure' }, { id: 'compare', label: '⚖️ Compare' }, { id: 'macro', label: '🏦 Macro' }, { id: 'defi', label: '🦙 DeFi' }, { id: 'derivatives', label: '📊 Deriv' }, { id: 'charts', label: '📈 Charts' }, { id: 'portfolio', label: '💼 Portfolio' }];
   const formatPrice = (p) => { if (!p) return '$--'; if (p >= 1000) return \`$\${p.toLocaleString('en-US', { maximumFractionDigits: 0 })}\`; return \`$\${p.toFixed(2)}\`; };
   const formatChange = (c) => { if (c === undefined) return '--'; return c >= 0 ? \`+\${c.toFixed(1)}%\` : \`\${c.toFixed(1)}%\`; };
 
@@ -948,6 +1291,11 @@ function App() {
               )}
             </Card>
           </div>
+        )}
+
+        {/* Compare Tab */}
+        {activeTab === 'compare' && (
+          <ComparisonMode theme={theme} onHelp={setHelpModal} />
         )}
 
         {/* Macro Tab */}
