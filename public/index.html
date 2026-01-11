@@ -1,22 +1,234 @@
 <!DOCTYPE html>
 <html lang="pl">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#1a1a2e" />
-    <meta name="description" content="Crypto Decision Hub - Agregator wskaźników kryptowalutowych" />
-    <title>Crypto Decision Hub</title>
-    <style>
-      * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { 
-        background: #1a1a2e;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)" />
+  <meta name="description" content="Crypto Decision Hub - Comprehensive cryptocurrency analysis dashboard with trading signals, market data, and portfolio management" />
+  
+  <!-- PWA Meta Tags -->
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="CryptoHub" />
+  <meta name="application-name" content="Crypto Decision Hub" />
+  <meta name="msapplication-TileColor" content="#0f172a" />
+  <meta name="msapplication-tap-highlight" content="no" />
+  
+  <!-- Manifest -->
+  <link rel="manifest" href="/manifest.json" />
+  
+  <!-- Icons -->
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16x16.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
+  <link rel="mask-icon" href="/icons/safari-pinned-tab.svg" color="#3b82f6" />
+  
+  <!-- Splash Screens for iOS -->
+  <link rel="apple-touch-startup-image" href="/splash/apple-splash-2048-2732.png" media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+  <link rel="apple-touch-startup-image" href="/splash/apple-splash-1668-2388.png" media="(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+  <link rel="apple-touch-startup-image" href="/splash/apple-splash-1536-2048.png" media="(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+  <link rel="apple-touch-startup-image" href="/splash/apple-splash-1125-2436.png" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+  <link rel="apple-touch-startup-image" href="/splash/apple-splash-1242-2688.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+  <link rel="apple-touch-startup-image" href="/splash/apple-splash-828-1792.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+  <link rel="apple-touch-startup-image" href="/splash/apple-splash-1170-2532.png" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+  <link rel="apple-touch-startup-image" href="/splash/apple-splash-1179-2556.png" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+  <link rel="apple-touch-startup-image" href="/splash/apple-splash-1284-2778.png" media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+  <link rel="apple-touch-startup-image" href="/splash/apple-splash-1290-2796.png" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+
+  <title>Crypto Decision Hub</title>
+  
+  <style>
+    /* Critical CSS for fast first paint */
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: #0f172a;
+      color: #f1f5f9;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    
+    /* Loading spinner */
+    .app-loader {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #0f172a;
+      z-index: 9999;
+    }
+    
+    .app-loader-spinner {
+      width: 48px;
+      height: 48px;
+      border: 4px solid #334155;
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    
+    .app-loader-text {
+      margin-top: 16px;
+      color: #94a3b8;
+      font-size: 14px;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    /* Offline banner */
+    .offline-banner {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: #f59e0b;
+      color: #1e293b;
+      text-align: center;
+      padding: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      z-index: 10000;
+      display: none;
+    }
+    
+    .offline-banner.visible {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <!-- Offline Banner -->
+  <div id="offline-banner" class="offline-banner">
+    📴 Jesteś offline - dane mogą być nieaktualne
+  </div>
+  
+  <!-- Loading State -->
+  <div id="app-loader" class="app-loader">
+    <div class="app-loader-spinner"></div>
+    <div class="app-loader-text">Ładowanie Crypto Decision Hub...</div>
+  </div>
+  
+  <!-- React Root -->
+  <noscript>Musisz włączyć JavaScript aby uruchomić tę aplikację.</noscript>
+  <div id="root"></div>
+  
+  <script>
+    // Hide loader when app mounts
+    window.addEventListener('load', function() {
+      setTimeout(function() {
+        var loader = document.getElementById('app-loader');
+        if (loader) {
+          loader.style.opacity = '0';
+          loader.style.transition = 'opacity 0.3s';
+          setTimeout(function() {
+            loader.style.display = 'none';
+          }, 300);
+        }
+      }, 100);
+    });
+    
+    // Offline detection
+    function updateOnlineStatus() {
+      var banner = document.getElementById('offline-banner');
+      if (banner) {
+        if (!navigator.onLine) {
+          banner.classList.add('visible');
+        } else {
+          banner.classList.remove('visible');
+        }
       }
-    </style>
-  </head>
-  <body>
-    <noscript>Musisz włączyć JavaScript, aby uruchomić tę aplikację.</noscript>
-    <div id="root"></div>
-  </body>
+    }
+    
+    window.addEventListener('online', updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+    updateOnlineStatus();
+    
+    // Service Worker Registration
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/service-worker.js')
+          .then(function(registration) {
+            console.log('[App] SW registered:', registration.scope);
+            
+            // Check for updates periodically
+            setInterval(function() {
+              registration.update();
+            }, 60 * 60 * 1000); // Every hour
+            
+            // Handle updates
+            registration.addEventListener('updatefound', function() {
+              var newWorker = registration.installing;
+              console.log('[App] New SW found, installing...');
+              
+              newWorker.addEventListener('statechange', function() {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  // New version available
+                  if (confirm('Nowa wersja aplikacji dostępna! Odświeżyć?')) {
+                    newWorker.postMessage({ type: 'SKIP_WAITING' });
+                    window.location.reload();
+                  }
+                }
+              });
+            });
+          })
+          .catch(function(error) {
+            console.error('[App] SW registration failed:', error);
+          });
+        
+        // Handle controller change
+        navigator.serviceWorker.addEventListener('controllerchange', function() {
+          console.log('[App] SW controller changed');
+        });
+      });
+    }
+    
+    // PWA Install Prompt
+    var deferredPrompt;
+    window.addEventListener('beforeinstallprompt', function(e) {
+      console.log('[App] Install prompt available');
+      e.preventDefault();
+      deferredPrompt = e;
+      
+      // Dispatch custom event for React to handle
+      window.dispatchEvent(new CustomEvent('pwaInstallAvailable', { detail: e }));
+    });
+    
+    window.addEventListener('appinstalled', function(e) {
+      console.log('[App] PWA installed');
+      deferredPrompt = null;
+      window.dispatchEvent(new CustomEvent('pwaInstalled'));
+    });
+    
+    // Expose install function for React
+    window.installPWA = async function() {
+      if (!deferredPrompt) {
+        console.log('[App] No install prompt available');
+        return false;
+      }
+      
+      deferredPrompt.prompt();
+      var result = await deferredPrompt.userChoice;
+      console.log('[App] Install choice:', result.outcome);
+      deferredPrompt = null;
+      return result.outcome === 'accepted';
+    };
+    
+    // Check if running as PWA
+    window.isPWA = function() {
+      return window.matchMedia('(display-mode: standalone)').matches ||
+             window.navigator.standalone === true ||
+             document.referrer.includes('android-app://');
+    };
+  </script>
+</body>
 </html>
