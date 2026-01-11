@@ -615,9 +615,9 @@ const helpContent = {
     emoji: '🌍',
     description: 'Całkowita kapitalizacja rynku kryptowalut. Pokazuje ile kapitału jest zainwestowane w crypto.',
     interpretation: [
-      { condition: '> $3T', signal: 'bullish', text: '🟢 ATH territory - silna hossa' },
-      { condition: '$2T - $3T', signal: 'neutral', text: '🟡 Zdrowy rynek - normalne warunki' },
-      { condition: '< $1.5T', signal: 'bearish', text: '🔴 Bear market - kapitał odpływa' }
+      { condition: '> $3.5T', signal: 'bullish', text: '🟢 ATH territory - silna hossa' },
+      { condition: '$2.5T - $3.5T', signal: 'neutral', text: '🟡 Zdrowy rynek - normalne warunki' },
+      { condition: '< $2.5T', signal: 'bearish', text: '🔴 Bear market - kapitał odpływa' }
     ],
     tip: 'Rosnący market cap przy spadającej dominacji BTC = najlepszy czas na altcoiny.',
     source: 'CoinGecko API'
@@ -2188,10 +2188,10 @@ function App() {
                   <div className={`text-xs ${t.muted}`}>{cgData?.fearGreed?.text || '--'}</div>
                 </>}
               </Card>
-              <Card helpKey="totalMarketCap" onHelp={setHelpModal} theme={theme} isLive signalColor="neutral">
+              <Card helpKey="totalMarketCap" onHelp={setHelpModal} theme={theme} isLive signalColor={parseFloat(cgData?.totalMarketCap?.value || 0) > 3.5 ? 'positive' : parseFloat(cgData?.totalMarketCap?.value || 0) < 2.5 ? 'negative' : 'warning'}>
                 <div className={`text-[10px] ${t.muted} mb-1`}>🌍 Total Market Cap</div>
                 {loading ? <SkeletonLoader width="w-20" height="h-6" theme={theme} /> : <>
-                  <div className={`text-lg font-bold ${t.text}`}>${cgData?.totalMarketCap?.value || '--'}T</div>
+                  <div className={`text-lg font-bold ${parseFloat(cgData?.totalMarketCap?.value || 0) > 3.5 ? 'text-green-500' : parseFloat(cgData?.totalMarketCap?.value || 0) < 2.5 ? 'text-red-500' : 'text-yellow-500'}`}>${cgData?.totalMarketCap?.value || '--'}T</div>
                   <div className={`text-xs ${t.muted}`}>Vol: ${cgData?.totalVolume?.value || '--'}B</div>
                 </>}
               </Card>
