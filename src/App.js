@@ -2014,6 +2014,254 @@ const TradingViewTechnicalAnalysis = ({ symbol, interval, theme }) => {
   return <div ref={containerRef} className="h-[380px] w-full" />;
 };
 
+// ============== BINANCE POST GENERATOR ==============
+const BinancePostGenerator = ({ cgData, binanceData, defiData, altseasonData, dayScore, swingScore, hodlScore, theme }) => {
+  const t = useTheme(theme);
+  const [format, setFormat] = useState('standard');
+  const [copied, setCopied] = useState(false);
+  const [generatedText, setGeneratedText] = useState('');
+
+  const CONFIG = {
+    appUrl: 'crypto-decision-hub.vercel.app',
+    thresholds: {
+      dayTrading: { high: 65, neutral: 50, low: 35 },
+      swing: { high: 55, neutral: 45, low: 30 },
+      hodl: { high: 50, neutral: 40, low: 25 }
+    }
+  };
+
+  const getScoreSignal = (score, type) => {
+    const th = CONFIG.thresholds[type];
+    if (score >= th.high + 15) return { emoji: '🟢', pl: 'Akumuluj' };
+    if (score >= th.high) return { emoji: '🟢', pl: 'Pozytywny' };
+    if (score >= th.neutral) return { emoji: '🟡', pl: 'Neutralny' };
+    if (score >= th.low) return { emoji: '🟠', pl: 'Ostrożnie' };
+    return { emoji: '🔴', pl: 'Ryzyko' };
+  };
+
+  const generateAnalysis = useCallback(() => {
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    
+    const fg = cgData?.fearGreed?.value || 50;
+    const fgClass = fg < 25 ? 'Extreme Fear' : fg < 45 ? 'Fear' : fg < 55 ? 'Neutral' : fg < 75 ? 'Greed' : 'Extreme Greed';
+    const btcPrice = cgData?.btcPrice?.value || 0;
+    const btcChange = cgData?.btcPrice?.change || 0;
+    const ethPrice = cgData?.ethPrice?.value || 0;
+    const ethChange = cgData?.ethPrice?.change || 0;
+    const funding = binanceData?.fundingRate?.value || 0;
+    const btcDom = cgData?.btcDominance?.value || 50;
+    const tvl = defiData?.tvl?.value || 0;
+
+    const daySignal = getScoreSignal(dayScore, 'dayTrading');
+    const swingSignal = getScoreSignal(swingScore, 'swing');
+    const hodlSignal = getScoreSignal(hodlScore, 'hodl');
+    const avgScore = Math.round((dayScore + swingScore + hodlScore) / 3);
+
+    const formatPrice = (p) => p >= 1000 ? p.toLocaleString('en-US', { maximumFractionDigits: 0 }) : p.toFixed(2);
+    const formatChange = (c) => c >= 0 ? `+${c.toFixed(1)}%` : `${c.toFixed(1)}%`;
+    const formatTVL = (t) => `$${t.toFixed(1)}B`;
+
+    let marketSummary = '';
+    if (fg < 25) marketSummary = 'Rynek w strefie STRACHU. Historycznie okolice dna - rozważ akumulację.';
+    else if (fg > 75) marketSummary = 'Rynek w strefie CHCIWOŚCI. Podwyższone ryzyko korekty.';
+    else if (btcChange > 5) marketSummary = 'Silne momentum wzrostowe. Trend byczy.';
+    else if (btcChange < -5) marketSummary = 'Korekta w toku. Czekaj na stabilizację.';
+    else marketSummary = 'Konsolidacja. Brak wyraźnego kierunku.';
+
+    if (format === 'standard') {
+      return `═══════════════════════════════════════
+📊 CRYPTO MARKET ANALYSIS
+📅 ${dateStr}
+═══════════════════════════════════════
+
+💰 CENY GŁÓWNYCH KRYPTO
+
+BTC: $${formatPrice(btcPrice)} (${formatChange(btcChange)})
+ETH: $${formatPrice(ethPrice)} (${formatChange(ethChange)})
+
+📈 KLUCZOWE WSKAŹNIKI
+
+Fear & Greed Index: ${fg}/100 (${fgClass})
+BTC Dominance: ${btcDom.toFixed(1)}%
+Funding Rate: ${(funding * 100).toFixed(4)}%
+DeFi TVL: ${formatTVL(tvl)}
+
+🎯 THREE SCORES ANALYSIS
+
+${daySignal.emoji} Day Trading: ${dayScore}/100 - ${daySignal.pl}
+${swingSignal.emoji} Swing (tygodnie): ${swingScore}/100 - ${swingSignal.pl}
+${hodlSignal.emoji} HODL (długoterm): ${hodlScore}/100 - ${hodlSignal.pl}
+
+Średnia: ${avgScore}/100
+
+📝 PODSUMOWANIE
+
+${marketSummary}
+
+⚠️ To nie jest porada inwestycyjna. DYOR.
+
+🔗 Więcej analiz: ${CONFIG.appUrl}
+
+#Bitcoin #Crypto #Trading #MarketAnalysis`;
+    }
+
+    if (format === 'short') {
+      return `📊 Crypto Update ${dateStr.split(',')[0]}
+
+BTC $${formatPrice(btcPrice)} ${formatChange(btcChange)}
+F&G: ${fg} | Dom: ${btcDom.toFixed(0)}%
+
+Scores: Day ${dayScore} | Swing ${swingScore} | HODL ${hodlScore}
+
+${marketSummary}
+
+🔗 ${CONFIG.appUrl}
+
+#BTC #Crypto`;
+    }
+
+    if (format === 'thread') {
+      return `🧵 THREAD: Analiza rynku crypto ${dateStr.split(',')[0]}
+
+Dziś patrzymy na:
+• Fear & Greed Index
+• Derivatives (Funding)
+• Three Scores System
+
+👇 Szczegóły w komentarzach
+
+---
+
+1/ SENTYMENT
+
+Fear & Greed: ${fg}/100
+${fg < 30 ? '→ Strach = potencjalne dno' : fg > 70 ? '→ Chciwość = ostrożność' : '→ Neutralnie'}
+
+---
+
+2/ CENY
+
+$BTC: $${formatPrice(btcPrice)} (${formatChange(btcChange)})
+$ETH: $${formatPrice(ethPrice)} (${formatChange(ethChange)})
+
+BTC Dominance: ${btcDom.toFixed(1)}%
+
+---
+
+3/ THREE SCORES
+
+${daySignal.emoji} Day: ${dayScore}
+${swingSignal.emoji} Swing: ${swingScore}
+${hodlSignal.emoji} HODL: ${hodlScore}
+
+AVG: ${avgScore}/100
+
+---
+
+4/ WNIOSKI
+
+${marketSummary}
+
+⚠️ NFA/DYOR
+🔗 ${CONFIG.appUrl}
+
+#Crypto #Bitcoin #Trading`;
+    }
+
+    return '';
+  }, [cgData, binanceData, defiData, dayScore, swingScore, hodlScore, format]);
+
+  useEffect(() => {
+    setGeneratedText(generateAnalysis());
+  }, [generateAnalysis]);
+
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(generatedText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      // Fallback dla starszych przeglądarek
+      const textarea = document.createElement('textarea');
+      textarea.value = generatedText;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <div className="p-3 space-y-3">
+      {/* Header */}
+      <div className={`p-3 rounded-xl ${t.card} border ${t.border}`}>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h2 className={`text-base font-bold ${t.text}`}>📝 Binance Post Generator</h2>
+            <p className={`text-xs ${t.muted}`}>Generuj analizy na Binance Square</p>
+          </div>
+          <button
+            onClick={copyToClipboard}
+            className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
+              copied 
+                ? 'bg-green-500 text-white' 
+                : 'bg-blue-500 hover:bg-blue-600 text-white'
+            }`}
+          >
+            {copied ? '✓ Skopiowano!' : '📋 Kopiuj'}
+          </button>
+        </div>
+
+        {/* Format selector */}
+        <div className="flex gap-2">
+          {[
+            { id: 'standard', label: '📄 Standard', desc: 'Pełna analiza' },
+            { id: 'short', label: '⚡ Krótki', desc: 'Quick update' },
+            { id: 'thread', label: '🧵 Thread', desc: 'Multi-post' }
+          ].map(f => (
+            <button
+              key={f.id}
+              onClick={() => setFormat(f.id)}
+              className={`flex-1 p-2 rounded-lg text-center transition-all ${
+                format === f.id 
+                  ? 'bg-blue-500/20 border-blue-500 border-2' 
+                  : `${t.bg} border ${t.border}`
+              }`}
+            >
+              <div className={`text-xs font-semibold ${format === f.id ? 'text-blue-400' : t.text}`}>{f.label}</div>
+              <div className={`text-[10px] ${t.muted}`}>{f.desc}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Preview */}
+      <div className={`p-3 rounded-xl ${t.card} border ${t.border}`}>
+        <div className="flex items-center justify-between mb-2">
+          <span className={`text-xs font-semibold ${t.muted}`}>PODGLĄD</span>
+          <span className={`text-[10px] ${t.muted}`}>{generatedText.length} znaków</span>
+        </div>
+        <pre className={`text-xs ${t.text} whitespace-pre-wrap font-mono leading-relaxed p-3 rounded-lg ${t.isDark ? 'bg-slate-900' : 'bg-slate-100'} max-h-[400px] overflow-y-auto`}>
+          {generatedText}
+        </pre>
+      </div>
+
+      {/* Tips */}
+      <div className={`p-3 rounded-xl bg-blue-500/10 border border-blue-500/30`}>
+        <div className="text-xs text-blue-400 font-semibold mb-1">💡 Wskazówki</div>
+        <ul className="text-[11px] text-blue-300/80 space-y-0.5">
+          <li>• <b>Standard</b> - na Śr/So, pełna analiza z kontekstem</li>
+          <li>• <b>Krótki</b> - codziennie, szybki update</li>
+          <li>• <b>Thread</b> - na weekend, rozdziel na osobne posty</li>
+        </ul>
+      </div>
+    </div>
+  );
+};
+
 // ============== MAIN APP ==============
 function App() {
   const [theme, setTheme] = useState('dark');
@@ -2191,7 +2439,7 @@ function App() {
   const handleCancelOrder = async (symbol, orderId, market) => { const result = await cancelOrder(portfolioApiKey, portfolioSecretKey, symbol, orderId, market); if (result.success) refreshPortfolio(); };
   const handleClosePosition = async (symbol, positionAmt) => { const result = await closePosition(portfolioApiKey, portfolioSecretKey, symbol, positionAmt); if (result.success) refreshPortfolio(); };
 
-  const tabs = [{ id: 'crypto', label: '₿ Crypto' }, { id: 'structure', label: '📊 Structure' }, { id: 'pulse', label: '⚡ Pulse' }, { id: 'compare', label: '⚖️ Compare' }, { id: 'macro', label: '🏦 Macro' }, { id: 'defi', label: '🦙 DeFi' }, { id: 'derivatives', label: '📊 Deriv' }, { id: 'charts', label: '📈 Charts' }, { id: 'portfolio', label: '💼 Portfolio' }];
+  const tabs = [{ id: 'crypto', label: '₿ Crypto' }, { id: 'structure', label: '📊 Structure' }, { id: 'pulse', label: '⚡ Pulse' }, { id: 'compare', label: '⚖️ Compare' }, { id: 'macro', label: '🏦 Macro' }, { id: 'defi', label: '🦙 DeFi' }, { id: 'derivatives', label: '📊 Deriv' }, { id: 'charts', label: '📈 Charts' }, { id: 'portfolio', label: '💼 Portfolio' }, { id: 'post', label: '📝 Post' }];
   const formatPrice = (p) => { if (!p) return '$--'; if (p >= 1000) return `$${p.toLocaleString('en-US', { maximumFractionDigits: 0 })}`; return `$${p.toFixed(2)}`; };
   const formatChange = (c) => { if (c === undefined) return '--'; return c >= 0 ? `+${c.toFixed(1)}%` : `${c.toFixed(1)}%`; };
 
@@ -2586,6 +2834,19 @@ function App() {
               </>
             )}
           </div>
+        )}
+
+        {activeTab === 'post' && (
+          <BinancePostGenerator 
+            cgData={cgData} 
+            binanceData={binanceData} 
+            defiData={defiData} 
+            altseasonData={altseasonData}
+            dayScore={dayScore} 
+            swingScore={swingScore} 
+            hodlScore={hodlScore} 
+            theme={theme} 
+          />
         )}
       </div>
 
