@@ -867,7 +867,7 @@ const DataSourcesBadge = ({ apiStatus, theme }) => {
   );
 };
 
-const AIInsight = ({ cgData, binanceData, altseasonData, defiData, dayScore, swingScore, hodlScore, theme }) => {
+const AIInsight = ({ cgData, binanceData, altseasonData, defiData, dayScore, swingScore, hodlScore, theme, onOpenPost }) => {
   const t = useTheme(theme);
   
   // Extract all metrics with correct paths
@@ -966,10 +966,19 @@ const AIInsight = ({ cgData, binanceData, altseasonData, defiData, dayScore, swi
   
   return (
     <div className="px-3 mt-3 mb-3">
-      <div className={`p-3 ${bgClass} border-l-4 rounded-lg`}>
+      <div className={`p-3 ${bgClass} border-l-4 rounded-lg relative`}>
+        {/* Post Generator Button */}
+        {onOpenPost && (
+          <button 
+            onClick={onOpenPost}
+            className={`absolute top-2 right-2 px-2 py-1 rounded-lg text-[10px] font-semibold ${t.isDark ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-200 hover:bg-slate-300'} ${t.text} transition-colors`}
+          >
+            📝 Post
+          </button>
+        )}
         <div className="flex items-start gap-2.5">
           <span className="text-xl flex-shrink-0">{emoji}</span>
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 pr-14">
             <div className={`text-[10px] ${t.text} opacity-70 mb-1`}>🤖 AI MARKET INSIGHT</div>
             <div className={`text-sm font-semibold ${headlineColor} mb-1.5`}>{headline}</div>
             <ul className={`text-[11px] ${t.text} opacity-90 leading-relaxed space-y-0.5`}>
@@ -2015,7 +2024,7 @@ const TradingViewTechnicalAnalysis = ({ symbol, interval, theme }) => {
 };
 
 // ============== BINANCE POST GENERATOR ==============
-const BinancePostGenerator = ({ cgData, binanceData, defiData, altseasonData, dayScore, swingScore, hodlScore, theme }) => {
+const BinancePostGenerator = ({ cgData, binanceData, defiData, altseasonData, dayScore, swingScore, hodlScore, theme, onClose }) => {
   const t = useTheme(theme);
   const [format, setFormat] = useState('standard');
   const [copied, setCopied] = useState(false);
@@ -2195,68 +2204,71 @@ ${marketSummary}
   };
 
   return (
-    <div className="p-3 space-y-3">
-      {/* Header */}
-      <div className={`p-3 rounded-xl ${t.card} border ${t.border}`}>
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h2 className={`text-base font-bold ${t.text}`}>📝 Binance Post Generator</h2>
-            <p className={`text-xs ${t.muted}`}>Generuj analizy na Binance Square</p>
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center" onClick={onClose}>
+      <div 
+        className={`w-full max-w-lg max-h-[85vh] overflow-y-auto ${t.card} rounded-t-2xl sm:rounded-2xl`}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="p-3 space-y-3">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className={`text-base font-bold ${t.text}`}>📝 Binance Post Generator</h2>
+              <p className={`text-xs ${t.muted}`}>Generuj analizy na Binance Square</p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={copyToClipboard}
+                className={`px-3 py-1.5 rounded-lg font-semibold text-xs transition-all ${
+                  copied 
+                    ? 'bg-green-500 text-white' 
+                    : 'bg-blue-500 hover:bg-blue-600 text-white'
+                }`}
+              >
+                {copied ? '✓ OK!' : '📋 Kopiuj'}
+              </button>
+              <button
+                onClick={onClose}
+                className={`w-8 h-8 rounded-lg ${t.isDark ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-200 hover:bg-slate-300'} ${t.text} text-lg`}
+              >
+                ✕
+              </button>
+            </div>
           </div>
-          <button
-            onClick={copyToClipboard}
-            className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
-              copied 
-                ? 'bg-green-500 text-white' 
-                : 'bg-blue-500 hover:bg-blue-600 text-white'
-            }`}
-          >
-            {copied ? '✓ Skopiowano!' : '📋 Kopiuj'}
-          </button>
-        </div>
 
-        {/* Format selector */}
-        <div className="flex gap-2">
-          {[
-            { id: 'standard', label: '📄 Standard', desc: 'Pełna analiza' },
-            { id: 'short', label: '⚡ Krótki', desc: 'Quick update' },
-            { id: 'thread', label: '🧵 Thread', desc: 'Multi-post' }
-          ].map(f => (
-            <button
-              key={f.id}
-              onClick={() => setFormat(f.id)}
-              className={`flex-1 p-2 rounded-lg text-center transition-all ${
-                format === f.id 
-                  ? 'bg-blue-500/20 border-blue-500 border-2' 
-                  : `${t.bg} border ${t.border}`
-              }`}
-            >
-              <div className={`text-xs font-semibold ${format === f.id ? 'text-blue-400' : t.text}`}>{f.label}</div>
-              <div className={`text-[10px] ${t.muted}`}>{f.desc}</div>
-            </button>
-          ))}
-        </div>
-      </div>
+          {/* Format selector */}
+          <div className="flex gap-2">
+            {[
+              { id: 'standard', label: '📄 Standard', desc: 'Pełna analiza' },
+              { id: 'short', label: '⚡ Krótki', desc: 'Quick update' },
+              { id: 'thread', label: '🧵 Thread', desc: 'Multi-post' }
+            ].map(f => (
+              <button
+                key={f.id}
+                onClick={() => setFormat(f.id)}
+                className={`flex-1 p-2 rounded-lg text-center transition-all ${
+                  format === f.id 
+                    ? 'bg-blue-500/20 border-blue-500 border-2' 
+                    : `${t.bg} border ${t.border}`
+                }`}
+              >
+                <div className={`text-xs font-semibold ${format === f.id ? 'text-blue-400' : t.text}`}>{f.label}</div>
+                <div className={`text-[10px] ${t.muted}`}>{f.desc}</div>
+              </button>
+            ))}
+          </div>
 
-      {/* Preview */}
-      <div className={`p-3 rounded-xl ${t.card} border ${t.border}`}>
-        <div className="flex items-center justify-between mb-2">
-          <span className={`text-xs font-semibold ${t.muted}`}>PODGLĄD</span>
-          <span className={`text-[10px] ${t.muted}`}>{generatedText.length} znaków</span>
+          {/* Preview */}
+          <div className={`p-3 rounded-xl ${t.isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
+            <div className="flex items-center justify-between mb-2">
+              <span className={`text-xs font-semibold ${t.muted}`}>PODGLĄD</span>
+              <span className={`text-[10px] ${t.muted}`}>{generatedText.length} znaków</span>
+            </div>
+            <pre className={`text-[11px] ${t.text} whitespace-pre-wrap font-mono leading-relaxed p-2 rounded-lg ${t.isDark ? 'bg-slate-900' : 'bg-white'} max-h-[300px] overflow-y-auto`}>
+              {generatedText}
+            </pre>
+          </div>
         </div>
-        <pre className={`text-xs ${t.text} whitespace-pre-wrap font-mono leading-relaxed p-3 rounded-lg ${t.isDark ? 'bg-slate-900' : 'bg-slate-100'} max-h-[400px] overflow-y-auto`}>
-          {generatedText}
-        </pre>
-      </div>
-
-      {/* Tips */}
-      <div className={`p-3 rounded-xl bg-blue-500/10 border border-blue-500/30`}>
-        <div className="text-xs text-blue-400 font-semibold mb-1">💡 Wskazówki</div>
-        <ul className="text-[11px] text-blue-300/80 space-y-0.5">
-          <li>• <b>Standard</b> - na Śr/So, pełna analiza z kontekstem</li>
-          <li>• <b>Krótki</b> - codziennie, szybki update</li>
-          <li>• <b>Thread</b> - na weekend, rozdziel na osobne posty</li>
-        </ul>
       </div>
     </div>
   );
@@ -2306,6 +2318,7 @@ function App() {
   const [ethBtcLoading, setEthBtcLoading] = useState(false);
   const [showPWAInstall, setShowPWAInstall] = useState(true);
   const [showPWAUpdate, setShowPWAUpdate] = useState(false);
+  const [showPostGenerator, setShowPostGenerator] = useState(false);
   const t = useTheme(theme);
 
   useEffect(() => {
@@ -2439,7 +2452,7 @@ function App() {
   const handleCancelOrder = async (symbol, orderId, market) => { const result = await cancelOrder(portfolioApiKey, portfolioSecretKey, symbol, orderId, market); if (result.success) refreshPortfolio(); };
   const handleClosePosition = async (symbol, positionAmt) => { const result = await closePosition(portfolioApiKey, portfolioSecretKey, symbol, positionAmt); if (result.success) refreshPortfolio(); };
 
-  const tabs = [{ id: 'crypto', label: '₿ Crypto' }, { id: 'structure', label: '📊 Structure' }, { id: 'pulse', label: '⚡ Pulse' }, { id: 'compare', label: '⚖️ Compare' }, { id: 'macro', label: '🏦 Macro' }, { id: 'defi', label: '🦙 DeFi' }, { id: 'derivatives', label: '📊 Deriv' }, { id: 'charts', label: '📈 Charts' }, { id: 'portfolio', label: '💼 Portfolio' }, { id: 'post', label: '📝 Post' }];
+  const tabs = [{ id: 'crypto', label: '₿ Crypto' }, { id: 'structure', label: '📊 Structure' }, { id: 'pulse', label: '⚡ Pulse' }, { id: 'compare', label: '⚖️ Compare' }, { id: 'macro', label: '🏦 Macro' }, { id: 'defi', label: '🦙 DeFi' }, { id: 'derivatives', label: '📊 Deriv' }, { id: 'charts', label: '📈 Charts' }, { id: 'portfolio', label: '💼 Portfolio' }];
   const formatPrice = (p) => { if (!p) return '$--'; if (p >= 1000) return `$${p.toLocaleString('en-US', { maximumFractionDigits: 0 })}`; return `$${p.toFixed(2)}`; };
   const formatChange = (c) => { if (c === undefined) return '--'; return c >= 0 ? `+${c.toFixed(1)}%` : `${c.toFixed(1)}%`; };
 
@@ -2472,7 +2485,7 @@ function App() {
       </div>
 
       {/* AI Insight */}
-      <AIInsight cgData={cgData} binanceData={binanceData} altseasonData={altseasonData} defiData={defiData} dayScore={dayScore} swingScore={swingScore} hodlScore={hodlScore} theme={theme} />
+      <AIInsight cgData={cgData} binanceData={binanceData} altseasonData={altseasonData} defiData={defiData} dayScore={dayScore} swingScore={swingScore} hodlScore={hodlScore} theme={theme} onOpenPost={() => setShowPostGenerator(true)} />
 
       {/* Main Content */}
       <div className="p-3 space-y-3">
@@ -2835,28 +2848,15 @@ function App() {
             )}
           </div>
         )}
-
-        {activeTab === 'post' && (
-          <BinancePostGenerator 
-            cgData={cgData} 
-            binanceData={binanceData} 
-            defiData={defiData} 
-            altseasonData={altseasonData}
-            dayScore={dayScore} 
-            swingScore={swingScore} 
-            hodlScore={hodlScore} 
-            theme={theme} 
-          />
-        )}
       </div>
 
       {/* Bottom Navigation */}
-      <div className={`fixed bottom-0 left-0 right-0 ${t.card} border-t ${t.border} z-50 px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))]`}>
-        <div className="flex justify-around items-center">
+      <div className={`fixed bottom-0 left-0 right-0 ${t.card} border-t ${t.border} z-50 px-1 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))]`}>
+        <div className="flex overflow-x-auto gap-1 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
           {tabs.map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg border-none min-w-[44px] cursor-pointer ${activeTab === tab.id ? 'bg-blue-500/20 text-blue-500' : `bg-transparent ${t.muted}`}`}>
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg border-none min-w-[48px] flex-shrink-0 cursor-pointer ${activeTab === tab.id ? 'bg-blue-500/20 text-blue-500' : `bg-transparent ${t.muted}`}`}>
               <span className="text-base">{tab.label.split(' ')[0]}</span>
-              <span className="text-[8px] font-semibold">{tab.label.split(' ')[1] || ''}</span>
+              <span className="text-[8px] font-semibold whitespace-nowrap">{tab.label.split(' ')[1] || ''}</span>
             </button>
           ))}
         </div>
@@ -2865,6 +2865,7 @@ function App() {
       {/* Modals */}
       {helpModal && <HelpModal helpKey={helpModal} onClose={() => setHelpModal(null)} theme={theme} />}
       {showAlertPanel && <AlertPanel alerts={alerts} onAddAlert={handleAddAlert} onDeleteAlert={handleDeleteAlert} onClose={() => setShowAlertPanel(false)} theme={theme} />}
+      {showPostGenerator && <BinancePostGenerator cgData={cgData} binanceData={binanceData} defiData={defiData} altseasonData={altseasonData} dayScore={dayScore} swingScore={swingScore} hodlScore={hodlScore} theme={theme} onClose={() => setShowPostGenerator(false)} />}
       {activeToast && <AlertToast alert={activeToast} onClose={() => setActiveToast(null)} theme={theme} />}
       
       {/* PWA Components */}
