@@ -818,14 +818,14 @@ const AIInsight = ({ cgData, binanceData, altseasonData, dayScore, swingScore, h
   else if (btcChange > 5) { insight = `BTC +${btcChange.toFixed(1)}% = silne momentum.`; signal = 'bullish'; emoji = '📈'; }
   else if (btcChange < -5) { insight = `BTC ${btcChange.toFixed(1)}% = korekta.`; signal = 'bearish'; emoji = '📉'; }
   else { const avg = Math.round((dayScore + swingScore + hodlScore) / 3); insight = `Mieszane sygnały (avg: ${avg}). Obserwuj.`; }
-  const signalClass = signal === 'bullish' ? 'bg-green-500/15 border-l-green-500' : signal === 'bearish' ? 'bg-red-500/15 border-l-red-500' : 'bg-yellow-500/15 border-l-yellow-500';
+  const gradientClass = signal === 'bullish' ? 'bg-gradient-to-r from-green-500/25 to-transparent border-l-green-500' : signal === 'bearish' ? 'bg-gradient-to-r from-red-500/25 to-transparent border-l-red-500' : 'bg-gradient-to-r from-yellow-500/25 to-transparent border-l-yellow-500';
   return (
-    <div className={`p-2.5 ${signalClass} border-l-4 rounded-r-lg mx-3 mb-2.5`}>
-      <div className="flex items-start gap-2">
-        <span className="text-lg">{emoji}</span>
+    <div className={`p-3 ${gradientClass} border-l-4 rounded-lg mx-3 mb-3`}>
+      <div className="flex items-start gap-2.5">
+        <span className="text-xl">{emoji}</span>
         <div>
-          <div className={`text-[9px] ${t.text} opacity-70 mb-0.5`}>🤖 AI INSIGHT</div>
-          <div className={`text-[11px] ${t.text} leading-relaxed`}>{insight}</div>
+          <div className={`text-[10px] ${t.text} opacity-70 mb-0.5`}>🤖 AI INSIGHT</div>
+          <div className={`text-xs ${t.text} leading-relaxed`}>{insight}</div>
         </div>
       </div>
     </div>
@@ -839,21 +839,21 @@ const MiniScoreGauge = ({ score, label, icon, subtitle, onHelp, theme }) => {
   const needleAngle = -90 + (score / 100) * 180;
   const gaugeColors = ['#ef4444', '#f97316', '#eab308', '#84cc16', '#22c55e'];
   return (
-    <div className={`flex flex-col items-center w-[31%] min-w-[95px] p-2 ${t.isDark ? 'bg-slate-800/50' : 'bg-slate-100/70'} rounded-lg relative`}>
-      <button onClick={onHelp} className={`absolute top-1 right-1 w-4 h-4 rounded-full ${t.isDark ? 'bg-white/10' : 'bg-black/10'} border-none ${t.muted} text-[9px] cursor-pointer flex items-center justify-center z-10`}>?</button>
-      <div className="flex items-center justify-center w-full mb-1">
-        <span className={`text-[10px] font-bold ${t.text}`}>{icon} {label}</span>
+    <div className={`flex flex-col items-center w-[32%] min-w-[100px] p-2.5 ${t.isDark ? 'bg-slate-800/50' : 'bg-slate-100/70'} rounded-xl relative`}>
+      <button onClick={onHelp} className={`absolute top-1.5 right-1.5 w-5 h-5 rounded-full ${t.isDark ? 'bg-white/15' : 'bg-black/10'} border-none ${t.muted} text-[10px] cursor-pointer flex items-center justify-center z-10 hover:opacity-80`}>?</button>
+      <div className="flex items-center justify-center w-full mb-1.5 pr-5">
+        <span className={`text-xs font-bold ${t.text}`}>{icon} {label}</span>
       </div>
-      <svg viewBox="0 0 100 52" className="w-full max-w-[85px] h-[44px]">
+      <svg viewBox="0 0 100 55" className="w-full max-w-[100px] h-[55px]">
         <defs><linearGradient id={`gauge-${label}`} x1="0%" y1="0%" x2="100%" y2="0%">{gaugeColors.map((c, i) => <stop key={i} offset={`${i * 25}%`} stopColor={c} />)}</linearGradient></defs>
-        <path d="M 10 48 A 40 40 0 0 1 90 48" fill="none" stroke={t.isDark ? '#334155' : '#e2e8f0'} strokeWidth="7" strokeLinecap="round" />
-        <path d="M 10 48 A 40 40 0 0 1 90 48" fill="none" stroke={`url(#gauge-${label})`} strokeWidth="7" strokeLinecap="round" strokeDasharray={`${(score / 100) * 126} 126`} />
-        <g transform={`rotate(${needleAngle} 50 48)`}><line x1="50" y1="48" x2="50" y2="18" stroke={signal.color} strokeWidth="2.5" strokeLinecap="round" /><circle cx="50" cy="48" r="4" fill={signal.color} /></g>
-        <text x="50" y="42" textAnchor="middle" className="text-lg font-bold" fill={signal.color}>{score}</text>
+        <path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke={t.isDark ? '#334155' : '#e2e8f0'} strokeWidth="8" strokeLinecap="round" />
+        <path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke={`url(#gauge-${label})`} strokeWidth="8" strokeLinecap="round" strokeDasharray={`${(score / 100) * 126} 126`} />
+        <g transform={`rotate(${needleAngle} 50 50)`}><line x1="50" y1="50" x2="50" y2="18" stroke={signal.color} strokeWidth="3" strokeLinecap="round" /><circle cx="50" cy="50" r="5" fill={signal.color} /></g>
+        <text x="50" y="45" textAnchor="middle" fontSize="18" fontWeight="bold" fill={signal.color}>{score}</text>
       </svg>
-      <div className="text-center -mt-0.5">
-        <div className="text-[9px] font-bold" style={{ color: signal.color }}>{signal.text}</div>
-        {subtitle && <div className={`text-[7px] ${t.muted}`}>{subtitle}</div>}
+      <div className="text-center mt-0.5">
+        <div className="text-[10px] font-bold tracking-wide" style={{ color: signal.color }}>{signal.text}</div>
+        {subtitle && <div className={`text-[8px] ${t.muted} mt-0.5`}>{subtitle}</div>}
       </div>
     </div>
   );
@@ -2077,28 +2077,28 @@ function App() {
         {activeTab === 'crypto' && (
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
-              <Card helpKey="btcPrice" onHelp={setHelpModal} theme={theme} isLive>
+              <Card helpKey="btcPrice" onHelp={setHelpModal} theme={theme} isLive signalColor={(cgData?.btcPrice?.change || 0) > 2 ? 'positive' : (cgData?.btcPrice?.change || 0) < -2 ? 'negative' : undefined}>
                 <div className={`text-[10px] ${t.muted} mb-1`}>₿ Bitcoin</div>
                 {loading ? <SkeletonLoader width="w-24" height="h-6" theme={theme} /> : <>
                   <div className={`text-lg font-bold ${t.text}`}>{formatPrice(cgData?.btcPrice?.value)}</div>
                   <div className={`text-xs font-semibold ${(cgData?.btcPrice?.change || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatChange(cgData?.btcPrice?.change)}</div>
                 </>}
               </Card>
-              <Card helpKey="ethPrice" onHelp={setHelpModal} theme={theme} isLive>
+              <Card helpKey="ethPrice" onHelp={setHelpModal} theme={theme} isLive signalColor={(cgData?.ethPrice?.change || 0) > 2 ? 'positive' : (cgData?.ethPrice?.change || 0) < -2 ? 'negative' : undefined}>
                 <div className={`text-[10px] ${t.muted} mb-1`}>Ξ Ethereum</div>
                 {loading ? <SkeletonLoader width="w-24" height="h-6" theme={theme} /> : <>
                   <div className={`text-lg font-bold ${t.text}`}>{formatPrice(cgData?.ethPrice?.value)}</div>
                   <div className={`text-xs font-semibold ${(cgData?.ethPrice?.change || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatChange(cgData?.ethPrice?.change)}</div>
                 </>}
               </Card>
-              <Card helpKey="solPrice" onHelp={setHelpModal} theme={theme} isLive>
+              <Card helpKey="solPrice" onHelp={setHelpModal} theme={theme} isLive signalColor={(cgData?.solPrice?.change || 0) > 2 ? 'positive' : (cgData?.solPrice?.change || 0) < -2 ? 'negative' : undefined}>
                 <div className={`text-[10px] ${t.muted} mb-1`}>◎ Solana</div>
                 {loading ? <SkeletonLoader width="w-24" height="h-6" theme={theme} /> : <>
                   <div className={`text-lg font-bold ${t.text}`}>{formatPrice(cgData?.solPrice?.value)}</div>
                   <div className={`text-xs font-semibold ${(cgData?.solPrice?.change || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatChange(cgData?.solPrice?.change)}</div>
                 </>}
               </Card>
-              <Card helpKey="fearGreed" onHelp={setHelpModal} theme={theme} isLive signalColor={cgData?.fearGreed?.value < 30 ? 'positive' : cgData?.fearGreed?.value > 70 ? 'negative' : 'warning'}>
+              <Card helpKey="fearGreed" onHelp={setHelpModal} theme={theme} isLive signalColor={(cgData?.fearGreed?.value || 50) < 30 ? 'positive' : (cgData?.fearGreed?.value || 50) > 70 ? 'negative' : 'warning'}>
                 <div className={`text-[10px] ${t.muted} mb-1`}>😱 Fear & Greed</div>
                 {loading ? <SkeletonLoader width="w-16" height="h-6" theme={theme} /> : <>
                   <div className={`text-lg font-bold ${t.text}`}>{cgData?.fearGreed?.value || '--'}</div>
@@ -2106,7 +2106,7 @@ function App() {
                 </>}
               </Card>
             </div>
-            <Card helpKey="btcDominance" onHelp={setHelpModal} theme={theme} isLive>
+            <Card helpKey="btcDominance" onHelp={setHelpModal} theme={theme} isLive signalColor={(cgData?.btcDominance?.value || 50) < 50 ? 'positive' : (cgData?.btcDominance?.value || 50) > 55 ? 'negative' : 'warning'}>
               <div className="flex justify-between items-center">
                 <div>
                   <div className={`text-[10px] ${t.muted} mb-1`}>👑 BTC Dominance</div>
@@ -2241,7 +2241,7 @@ function App() {
                 <div className={`text-xs font-semibold ${(defiData?.tvl?.change || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>{defiData?.tvl?.change >= 0 ? '+' : ''}{defiData?.tvl?.change || '--'}% 7d</div>
               </>}
             </Card>
-            <Card helpKey="stablecoinSupply" onHelp={setHelpModal} theme={theme} isLive>
+            <Card helpKey="stablecoinSupply" onHelp={setHelpModal} theme={theme} isLive signalColor={(defiData?.stablecoinSupply?.change || 0) > 2 ? 'positive' : (defiData?.stablecoinSupply?.change || 0) < -2 ? 'negative' : undefined}>
               <div className={`text-xs font-semibold mb-2 ${t.text}`}>💵 Stablecoin Supply</div>
               {loading ? <SkeletonLoader width="w-24" height="h-8" theme={theme} /> : <>
                 <div className={`text-2xl font-bold ${t.text}`}>${defiData?.stablecoinSupply?.value || '--'}B</div>
