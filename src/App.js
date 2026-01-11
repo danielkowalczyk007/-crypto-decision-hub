@@ -820,7 +820,7 @@ const AIInsight = ({ cgData, binanceData, altseasonData, dayScore, swingScore, h
   else { const avg = Math.round((dayScore + swingScore + hodlScore) / 3); insight = `Mieszane sygnały (avg: ${avg}). Obserwuj.`; }
   const bgClass = signal === 'bullish' ? 'bg-green-500/15 border-l-green-500' : signal === 'bearish' ? 'bg-red-500/15 border-l-red-500' : 'bg-yellow-500/15 border-l-yellow-500';
   return (
-    <div className="px-3 mb-3">
+    <div className="px-3 mt-3 mb-3">
       <div className={`p-3 ${bgClass} border-l-4 rounded-lg`}>
         <div className="flex items-start gap-2.5">
           <span className="text-xl">{emoji}</span>
@@ -847,13 +847,13 @@ const MiniScoreGauge = ({ score, label, icon, subtitle, onHelp, theme }) => {
         <div className={`text-[10px] font-bold ${t.text}`}>{icon} {label}</div>
         {subtitle && <div className={`text-[7px] ${t.muted}`}>{subtitle}</div>}
       </div>
-      <svg viewBox="0 0 100 50" className="w-full max-w-[90px] h-[45px]">
+      <svg viewBox="0 0 100 60" className="w-full max-w-[90px] h-[50px]">
         <defs><linearGradient id={`gauge-${label}`} x1="0%" y1="0%" x2="100%" y2="0%">{gaugeColors.map((c, i) => <stop key={i} offset={`${i * 25}%`} stopColor={c} />)}</linearGradient></defs>
         <path d="M 10 45 A 40 40 0 0 1 90 45" fill="none" stroke={t.isDark ? '#334155' : '#e2e8f0'} strokeWidth="7" strokeLinecap="round" />
         <path d="M 10 45 A 40 40 0 0 1 90 45" fill="none" stroke={`url(#gauge-${label})`} strokeWidth="7" strokeLinecap="round" strokeDasharray={`${(score / 100) * 126} 126`} />
-        <g transform={`rotate(${needleAngle} 50 45)`}><line x1="50" y1="45" x2="50" y2="15" stroke={signal.color} strokeWidth="2.5" strokeLinecap="round" /><circle cx="50" cy="45" r="4" fill={signal.color} /></g>
+        <g transform={`rotate(${needleAngle} 50 45)`}><line x1="50" y1="45" x2="50" y2="18" stroke={signal.color} strokeWidth="2.5" strokeLinecap="round" /><circle cx="50" cy="45" r="3" fill={signal.color} /></g>
       </svg>
-      <div className="text-center -mt-1">
+      <div className="text-center mt-1">
         <div className="text-[9px] font-bold tracking-wide" style={{ color: signal.color }}>{signal.text}</div>
         <div className="text-sm font-bold" style={{ color: signal.color }}>{score}</div>
       </div>
