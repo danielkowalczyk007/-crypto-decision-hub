@@ -125,6 +125,309 @@ const closePosition = async (apiKey, secretKey, symbol, positionAmt) => {
   return placeOrder(apiKey, secretKey, { symbol, side, type: 'MARKET', quantity: quantity.toString(), reduceOnly: 'true' }, 'FUTURES');
 };
 
+// ============== BRAKUJĄCE FUNKCJE API ==============
+// WKLEJ TEN KOD DO App.js PRZED LINIĄ "const helpContent = {"
+// (czyli przed linią ~130)
+
+// ============== COINGECKO API ==============
+const fetchCoinGeckoData = async () => {
+  try {
+    // Fetch główne dane
+    const [pricesRes, globalRes, fgRes] = await Promise.all([
+      fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true&include_market_cap=true'),
+      fetch('https://api.coingecko.com/api/v3/global'),
+      fetch('https://api.alternative.me/fng/?limit=1')
+    ]);
+    
+    if (!pricesRes.ok || !globalRes.ok) throw new Error('CoinGecko API error');
+    
+    const prices = await pricesRes.json();
+    const global = await globalRes.json();
+    const fgData = fgRes.ok ? await fgRes.json() : null;
+    
+    return {
+      btcPrice: {
+        value: prices.bitcoin?.usd || 0,
+        change: prices.bitcoin?.usd_24h_change || 0,
+        volume: prices.bitcoin?.usd_24h_vol || 0,
+        marketCap: prices.bitcoin?.usd_market_cap || 0
+      },
+      ethPrice: {
+        value: prices.ethereum?.usd || 0,
+        change: prices.ethereum?.usd_24h_change || 0,
+        volume: prices.ethereum?.usd_24h_vol || 0
+      },
+      solPrice: {
+        value: prices.solana?.usd || 0,
+        change: prices.solana?.usd_24h_change || 0,
+        volume: prices.solana?.usd_24h_vol || 0
+      },
+      btcDominance: global.data?.market_cap_percentage?.btc || 0,
+      totalMarketCap: global.data?.total_market_cap?.usd || 0,
+      totalVolume: global.data?.total_volume?.usd || 0,
+      fearGreed: {
+        value: parseInt(fgData?.data?.[0]?.value) || 50,
+        classification: fgData?.data?.[0]?.value_classification || 'Neutral'
+      }
+    };
+  } catch (error) {
+    console.error('CoinGecko fetch error:', error);
+    return null;
+  }
+};
+
+// ============== BINANCE FUTURES API ==============
+const fetchBinanceData = async () => {
+  try {
+    const [fundingRes, oiRes, lsRes] = await Promise.all([
+      fetch('https://fapi.binance.com/fapi/v1/fundingRate?symbol=BTCUSDT&limit=1'),
+      fetch('https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT'),
+      fetch('https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=1h&limit=1')
+    ]);
+    
+    if (!fundingRes.ok) throw new Error('Binance API error');
+    
+    const funding = await fundingRes.json();
+    const oi = oiRes.ok ? await oiRes.json() : null;
+    const ls = lsRes.ok ? await lsRes.json() : null;
+    
+    return {
+      fundingRate: {
+        value: parseFloat(funding[0]?.fundingRate || 0) * 100,
+        time: funding[0]?.fundingTime
+      },
+      openInterest: {
+        value: parseFloat(oi?.openInterest || 0),
+        notional: parseFloat(oi?.openInterest || 0) * 95000 // approx BTC price
+      },
+      longShortRatio: {
+        value: parseFloat(ls?.[0]?.longShortRatio || 1),
+        longAccount: parseFloat(ls?.[0]?.longAccount || 0.5),
+        shortAccount: parseFloat(ls?.[0]?.shortAccount || 0.5)
+      }
+    };
+  } catch (error) {
+    console.error('Binance fetch error:', error);
+    return null;
+  }
+};
+
+// ============== DEFILLAMA API ==============
+const fetchDefiLlamaData = async () => {
+  try {
+    const [tvlRes, stablesRes, protocolsRes] = await Promise.all([
+      fetch('https://api.llama.fi/v2/historicalChainTvl'),
+      fetch('https://stablecoins.llama.fi/stablecoins?includePrices=true'),
+      fetch('https://api.llama.fi/protocols')
+    ]);
+    
+    if (!tvlRes.ok) throw new Error('DefiLlama API error');
+    
+    const tvlData = await tvlRes.json();
+    const stablesData = stablesRes.ok ? await stablesRes.json() : null;
+    const protocols = protocolsRes.ok ? await protocolsRes.json() : [];
+    
+    // Calculate TVL change
+    const currentTvl = tvlData[tvlData.length - 1]?.tvl || 0;
+    const tvl7dAgo = tvlData[tvlData.length - 8]?.tvl || currentTvl;
+    const tvlChange = tvl7dAgo > 0 ? ((currentTvl - tvl7dAgo) / tvl7dAgo * 100) : 0;
+    
+    // Stablecoin data
+    const usdt = stablesData?.peggedAssets?.find(s => s.symbol === 'USDT');
+    const usdc = stablesData?.peggedAssets?.find(s => s.symbol === 'USDC');
+    const totalStables = stablesData?.peggedAssets?.reduce((sum, s) => sum + (s.circulating?.peggedUSD || 0), 0) || 0;
+    
+    // Top protocols
+    const topProtocols = protocols
+      .sort((a, b) => (b.tvl || 0) - (a.tvl || 0))
+      .slice(0, 5)
+      .map(p => ({ name: p.name, tvl: p.tvl, change7d: p.change_7d }));
+    
+    return {
+      tvl: {
+        value: currentTvl / 1e9, // in billions
+        change: tvlChange
+      },
+      stablecoins: {
+        total: totalStables / 1e9,
+        usdt: usdt?.circulating?.peggedUSD ? usdt.circulating.peggedUSD / 1e9 : 0,
+        usdc: usdc?.circulating?.peggedUSD ? usdc.circulating.peggedUSD / 1e9 : 0,
+        usdtChange: usdt?.circulatingPrevDay?.peggedUSD ? 
+          ((usdt.circulating.peggedUSD - usdt.circulatingPrevDay.peggedUSD) / usdt.circulatingPrevDay.peggedUSD * 100) : 0,
+        usdcChange: usdc?.circulatingPrevDay?.peggedUSD ?
+          ((usdc.circulating.peggedUSD - usdc.circulatingPrevDay.peggedUSD) / usdc.circulatingPrevDay.peggedUSD * 100) : 0
+      },
+      topProtocols
+    };
+  } catch (error) {
+    console.error('DefiLlama fetch error:', error);
+    return null;
+  }
+};
+
+// ============== FRED API (M2 Money Supply) ==============
+const fetchFredData = async () => {
+  try {
+    // FRED wymaga API key - używamy mocka jeśli brak
+    // Możesz dodać swój klucz: https://fred.stlouisfed.org/docs/api/api_key.html
+    const FRED_API_KEY = 'demo'; // zamień na swój klucz
+    
+    const response = await fetch(
+      `https://api.stlouisfed.org/fred/series/observations?series_id=M2SL&api_key=${FRED_API_KEY}&file_type=json&limit=12&sort_order=desc`
+    );
+    
+    if (!response.ok) {
+      // Fallback do mocka jeśli API nie działa
+      return {
+        m2: {
+          value: 21500, // approx M2 in billions
+          change: 4.2,
+          trend: 'expanding'
+        }
+      };
+    }
+    
+    const data = await response.json();
+    const observations = data.observations || [];
+    
+    if (observations.length < 2) {
+      return { m2: { value: 21500, change: 4.2, trend: 'expanding' } };
+    }
+    
+    const latest = parseFloat(observations[0]?.value) || 0;
+    const previous = parseFloat(observations[1]?.value) || latest;
+    const yearAgo = parseFloat(observations[11]?.value) || latest;
+    
+    const monthlyChange = previous > 0 ? ((latest - previous) / previous * 100) : 0;
+    const yearlyChange = yearAgo > 0 ? ((latest - yearAgo) / yearAgo * 100) : 0;
+    
+    return {
+      m2: {
+        value: latest,
+        change: yearlyChange,
+        monthlyChange: monthlyChange,
+        trend: monthlyChange >= 0 ? 'expanding' : 'contracting'
+      }
+    };
+  } catch (error) {
+    console.error('FRED fetch error:', error);
+    // Fallback
+    return {
+      m2: {
+        value: 21500,
+        change: 4.2,
+        trend: 'expanding'
+      }
+    };
+  }
+};
+
+// ============== MARKET STRUCTURE (Top Gainers/Losers) ==============
+const fetchMarketStructure = async () => {
+  try {
+    const response = await fetch('https://api.binance.com/api/v3/ticker/24hr');
+    if (!response.ok) throw new Error('Binance ticker error');
+    
+    const data = await response.json();
+    
+    // Filtruj tylko pary USDT i wyklucz stablecoiny
+    const stablecoins = ['BUSD', 'USDC', 'TUSD', 'FDUSD', 'DAI', 'USDP'];
+    const usdtPairs = data.filter(t => {
+      if (!t.symbol.endsWith('USDT')) return false;
+      const base = t.symbol.replace('USDT', '');
+      if (stablecoins.includes(base)) return false;
+      if (parseFloat(t.quoteVolume) < 1000000) return false; // min $1M volume
+      return true;
+    });
+    
+    // Sortuj po zmianie procentowej
+    const sorted = usdtPairs.sort((a, b) => parseFloat(b.priceChangePercent) - parseFloat(a.priceChangePercent));
+    
+    // Top gainers i losers
+    const topGainers = sorted.slice(0, 20).map(t => ({
+      name: t.symbol,
+      price: parseFloat(t.lastPrice),
+      change24h: parseFloat(t.priceChangePercent),
+      volume: parseFloat(t.quoteVolume)
+    }));
+    
+    const topLosers = sorted.slice(-20).reverse().map(t => ({
+      name: t.symbol,
+      price: parseFloat(t.lastPrice),
+      change24h: parseFloat(t.priceChangePercent),
+      volume: parseFloat(t.quoteVolume)
+    }));
+    
+    // Market breadth
+    const gainers = usdtPairs.filter(t => parseFloat(t.priceChangePercent) > 0).length;
+    const losers = usdtPairs.filter(t => parseFloat(t.priceChangePercent) < 0).length;
+    const unchanged = usdtPairs.length - gainers - losers;
+    
+    return {
+      topGainers,
+      topLosers,
+      breadth: {
+        gainers,
+        losers,
+        unchanged,
+        total: usdtPairs.length,
+        bullishPercent: (gainers / usdtPairs.length * 100).toFixed(1)
+      }
+    };
+  } catch (error) {
+    console.error('Market structure fetch error:', error);
+    return null;
+  }
+};
+
+// ============== ALTSEASON DATA ==============
+const fetchAltseasonData = async () => {
+  try {
+    const [globalRes, ethBtcRes] = await Promise.all([
+      fetch('https://api.coingecko.com/api/v3/global'),
+      fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=btc')
+    ]);
+    
+    if (!globalRes.ok) throw new Error('CoinGecko global error');
+    
+    const global = await globalRes.json();
+    const ethBtc = ethBtcRes.ok ? await ethBtcRes.json() : null;
+    
+    const btcDom = global.data?.market_cap_percentage?.btc || 50;
+    const ethBtcRatio = ethBtc?.ethereum?.btc || 0;
+    const total2Cap = (global.data?.total_market_cap?.usd || 0) - (global.data?.total_market_cap?.btc || 0);
+    
+    // Calculate Altseason Index (0-100)
+    // Based on BTC dominance and ETH/BTC ratio
+    let altseasonIndex = 50;
+    
+    // BTC Dominance factor (lower = more altseason)
+    if (btcDom < 40) altseasonIndex = 90;
+    else if (btcDom < 45) altseasonIndex = 75;
+    else if (btcDom < 50) altseasonIndex = 60;
+    else if (btcDom < 55) altseasonIndex = 40;
+    else if (btcDom < 60) altseasonIndex = 25;
+    else altseasonIndex = 10;
+    
+    // ETH/BTC ratio bonus
+    if (ethBtcRatio > 0.055) altseasonIndex = Math.min(100, altseasonIndex + 15);
+    else if (ethBtcRatio > 0.045) altseasonIndex = Math.min(100, altseasonIndex + 5);
+    else if (ethBtcRatio < 0.03) altseasonIndex = Math.max(0, altseasonIndex - 15);
+    
+    return {
+      altseasonIndex: Math.round(altseasonIndex),
+      btcDominance: btcDom,
+      ethBtcRatio: ethBtcRatio,
+      total2Cap: total2Cap / 1e12, // in trillions
+      isAltseason: altseasonIndex > 60
+    };
+  } catch (error) {
+    console.error('Altseason fetch error:', error);
+    return null;
+  }
+};
+
+// ============== KONIEC BRAKUJĄCYCH FUNKCJI ==============
 
 
 // ============== HELP CONTENT ==============
