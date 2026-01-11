@@ -1,8 +1,8 @@
-// Crypto Decision Hub - Service Worker v1.0
-const CACHE_NAME = 'crypto-hub-v1';
-const RUNTIME_CACHE = 'crypto-hub-runtime-v1';
+const CACHE_NAME = 'crypto-hub-v3.8';
+const STATIC_CACHE = 'crypto-hub-static-v3.8';
+const API_CACHE = 'crypto-hub-api-v3.8';
 
-// Static assets to cache on install
+// Static assets to cache immediately
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -13,43 +13,40 @@ const STATIC_ASSETS = [
   '/icons/icon-512x512.png'
 ];
 
-// API endpoints that should use network-first strategy
-const API_PATTERNS = [
-  'api.coingecko.com',
-  'api.binance.com',
-  'fapi.binance.com',
-  'api.llama.fi',
-  'stablecoins.llama.fi',
-  'api.alternative.me',
-  'api.stlouisfed.org'
-];
+// API endpoints with caching strategies
+const API_ENDPOINTS = {
+  coingecko: 'api.coingecko.com',
+  binance: 'api.binance.com',
+  binanceFutures: 'fapi.binance.com',
+  defillama: 'api.llama.fi',
+  defillamaStables: 'stablecoins.llama.fi',
+  fred: 'api.stlouisfed.org',
+  alternative: 'api.alternative.me'
+};
 
 // Install event - cache static assets
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing Service Worker...');
+  console.log('[SW] Installing service worker v3.8...');
   event.waitUntil(
-    caches.open(CACHE_NAME)
+    caches.open(STATIC_CACHE)
       .then((cache) => {
         console.log('[SW] Caching static assets');
-        return cache.addAll(STATIC_ASSETS.map(url => {
-          return new Request(url, { cache: 'reload' });
-        })).catch(err => {
-          console.log('[SW] Some static assets failed to cache:', err);
-        });
+        return cache.addAll(STATIC_ASSETS.filter(url => !url.includes('undefined')));
       })
       .then(() => self.skipWaiting())
+      .catch((err) => console.log('[SW] Cache error:', err))
   );
 });
 
 // Activate event - clean old caches
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Activating Service Worker...');
+  console.log('[SW] Activating service worker v3.8...');
   event.waitUntil(
     caches.keys()
       .then((cacheNames) => {
         return Promise.all(
           cacheNames
-            .filter((name) => name !== CACHE_NAME && name !== RUNTIME_CACHE)
+            .filter((name) => name !== STATIC_CACHE && name !== API_CACHE && name !== CACHE_NAME)
             .map((name) => {
               console.log('[SW] Deleting old cache:', name);
               return caches.delete(name);
@@ -60,45 +57,63 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch event - handle requests
+// Fetch event - implement caching strategies
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
   // Skip non-GET requests
-  if (request.method !== 'GET') {
-    return;
-  }
+  if (request.method !== 'GET') return;
 
   // Skip chrome-extension and other non-http(s) requests
-  if (!url.protocol.startsWith('http')) {
+  if (!url.protocol.startsWith('http')) return;
+
+  // API requests - Network First with cache fallback
+  if (isApiRequest(url)) {
+    event.respondWith(networkFirstStrategy(request));
     return;
   }
 
-  // Check if this is an API request
-  const isApiRequest = API_PATTERNS.some(pattern => url.hostname.includes(pattern));
-
-  if (isApiRequest) {
-    // Network-first strategy for API requests
-    event.respondWith(networkFirstStrategy(request));
-  } else if (url.origin === location.origin) {
-    // Cache-first strategy for same-origin static assets
+  // Static assets - Cache First with network fallback
+  if (isStaticAsset(url)) {
     event.respondWith(cacheFirstStrategy(request));
-  } else {
-    // Stale-while-revalidate for other requests
-    event.respondWith(staleWhileRevalidate(request));
+    return;
   }
+
+  // HTML pages - Network First
+  if (request.headers.get('accept')?.includes('text/html')) {
+    event.respondWith(networkFirstStrategy(request));
+    return;
+  }
+
+  // Default - Stale While Revalidate
+  event.respondWith(staleWhileRevalidate(request));
 });
 
-// Network-first strategy - try network, fall back to cache
+// Check if request is an API call
+function isApiRequest(url) {
+  return Object.values(API_ENDPOINTS).some(endpoint => url.hostname.includes(endpoint));
+}
+
+// Check if request is a static asset
+function isStaticAsset(url) {
+  return url.pathname.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2)$/);
+}
+
+// Network First Strategy (for APIs and HTML)
 async function networkFirstStrategy(request) {
-  const cache = await caches.open(RUNTIME_CACHE);
+  const cache = await caches.open(API_CACHE);
   
   try {
-    const networkResponse = await fetch(request);
+    const networkResponse = await fetch(request, { 
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache'
+      }
+    });
     
-    // Cache successful responses
     if (networkResponse.ok) {
+      // Clone and cache the response
       cache.put(request, networkResponse.clone());
     }
     
@@ -111,50 +126,60 @@ async function networkFirstStrategy(request) {
       return cachedResponse;
     }
     
-    // Return offline fallback for failed API requests
-    return new Response(JSON.stringify({
-      error: 'offline',
-      message: 'You are currently offline. Data may be outdated.',
-      cached: false
-    }), {
-      status: 503,
-      headers: { 'Content-Type': 'application/json' }
-    });
-  }
-}
-
-// Cache-first strategy - try cache, fall back to network
-async function cacheFirstStrategy(request) {
-  const cachedResponse = await caches.match(request);
-  
-  if (cachedResponse) {
-    return cachedResponse;
-  }
-  
-  try {
-    const networkResponse = await fetch(request);
-    const cache = await caches.open(CACHE_NAME);
-    cache.put(request, networkResponse.clone());
-    return networkResponse;
-  } catch (error) {
-    console.log('[SW] Fetch failed:', request.url);
-    
-    // Return offline page for navigation requests
-    if (request.mode === 'navigate') {
-      return caches.match('/');
+    // Return offline fallback for API requests
+    if (isApiRequest(new URL(request.url))) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'offline', 
+          message: 'No cached data available',
+          cached: false 
+        }),
+        { 
+          headers: { 'Content-Type': 'application/json' },
+          status: 503
+        }
+      );
     }
     
     throw error;
   }
 }
 
-// Stale-while-revalidate - return cache immediately, update in background
+// Cache First Strategy (for static assets)
+async function cacheFirstStrategy(request) {
+  const cache = await caches.open(STATIC_CACHE);
+  const cachedResponse = await cache.match(request);
+  
+  if (cachedResponse) {
+    // Refresh cache in background
+    fetch(request).then(response => {
+      if (response.ok) {
+        cache.put(request, response);
+      }
+    }).catch(() => {});
+    
+    return cachedResponse;
+  }
+  
+  try {
+    const networkResponse = await fetch(request);
+    if (networkResponse.ok) {
+      cache.put(request, networkResponse.clone());
+    }
+    return networkResponse;
+  } catch (error) {
+    console.log('[SW] Failed to fetch static asset:', request.url);
+    throw error;
+  }
+}
+
+// Stale While Revalidate Strategy
 async function staleWhileRevalidate(request) {
-  const cache = await caches.open(RUNTIME_CACHE);
+  const cache = await caches.open(CACHE_NAME);
   const cachedResponse = await cache.match(request);
   
   const fetchPromise = fetch(request)
-    .then((networkResponse) => {
+    .then(networkResponse => {
       if (networkResponse.ok) {
         cache.put(request, networkResponse.clone());
       }
@@ -165,103 +190,123 @@ async function staleWhileRevalidate(request) {
   return cachedResponse || fetchPromise;
 }
 
-// Background sync for failed requests (if supported)
-self.addEventListener('sync', (event) => {
-  if (event.tag === 'sync-data') {
-    console.log('[SW] Background sync triggered');
-    event.waitUntil(syncData());
-  }
-});
-
-async function syncData() {
-  // Attempt to re-fetch failed API requests when back online
-  const cache = await caches.open(RUNTIME_CACHE);
-  const requests = await cache.keys();
-  
-  const apiRequests = requests.filter(req => 
-    API_PATTERNS.some(pattern => req.url.includes(pattern))
-  );
-  
-  return Promise.all(
-    apiRequests.map(async (request) => {
-      try {
-        const response = await fetch(request);
-        if (response.ok) {
-          await cache.put(request, response);
-        }
-      } catch (error) {
-        console.log('[SW] Sync failed for:', request.url);
-      }
-    })
-  );
-}
-
-// Push notification support
+// Push notification event
 self.addEventListener('push', (event) => {
-  if (!event.data) return;
+  console.log('[SW] Push received');
   
-  const data = event.data.json();
+  let data = { title: 'Crypto Hub Alert', body: 'New market update available' };
+  
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch (e) {
+      data.body = event.data.text();
+    }
+  }
+  
   const options = {
-    body: data.body || 'New alert from Crypto Decision Hub',
+    body: data.body,
     icon: '/icons/icon-192x192.png',
-    badge: '/icons/badge-72x72.png',
+    badge: '/icons/icon-72x72.png',
     vibrate: [100, 50, 100],
     data: {
       url: data.url || '/',
       dateOfArrival: Date.now()
     },
     actions: [
-      { action: 'open', title: 'Open' },
+      { action: 'open', title: 'Open App' },
       { action: 'dismiss', title: 'Dismiss' }
-    ]
+    ],
+    tag: data.tag || 'crypto-alert',
+    renotify: true
   };
   
   event.waitUntil(
-    self.registration.showNotification(data.title || 'Crypto Alert', options)
+    self.registration.showNotification(data.title, options)
   );
 });
 
-// Notification click handler
+// Notification click event
 self.addEventListener('notificationclick', (event) => {
+  console.log('[SW] Notification clicked');
   event.notification.close();
   
   if (event.action === 'dismiss') return;
   
+  const urlToOpen = event.notification.data?.url || '/';
+  
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true })
-      .then((windowClients) => {
-        // Focus existing window or open new one
+      .then(windowClients => {
+        // Check if app is already open
         for (const client of windowClients) {
-          if (client.url === event.notification.data.url && 'focus' in client) {
+          if (client.url.includes(self.location.origin) && 'focus' in client) {
+            client.navigate(urlToOpen);
             return client.focus();
           }
         }
+        // Open new window
         if (clients.openWindow) {
-          return clients.openWindow(event.notification.data.url);
+          return clients.openWindow(urlToOpen);
         }
       })
   );
 });
 
-// Message handler for client communication
-self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
+// Background sync event
+self.addEventListener('sync', (event) => {
+  console.log('[SW] Background sync:', event.tag);
+  
+  if (event.tag === 'sync-portfolio') {
+    event.waitUntil(syncPortfolio());
   }
   
-  if (event.data && event.data.type === 'GET_VERSION') {
-    event.ports[0].postMessage({ version: CACHE_NAME });
-  }
-  
-  if (event.data && event.data.type === 'CLEAR_CACHE') {
-    event.waitUntil(
-      caches.keys().then((names) => 
-        Promise.all(names.map((name) => caches.delete(name)))
-      ).then(() => {
-        event.ports[0].postMessage({ success: true });
-      })
-    );
+  if (event.tag === 'sync-alerts') {
+    event.waitUntil(syncAlerts());
   }
 });
 
-console.log('[SW] Service Worker loaded');
+// Sync portfolio data when back online
+async function syncPortfolio() {
+  try {
+    const clients = await self.clients.matchAll();
+    clients.forEach(client => {
+      client.postMessage({ type: 'SYNC_PORTFOLIO' });
+    });
+  } catch (error) {
+    console.log('[SW] Portfolio sync failed:', error);
+  }
+}
+
+// Sync alerts when back online
+async function syncAlerts() {
+  try {
+    const clients = await self.clients.matchAll();
+    clients.forEach(client => {
+      client.postMessage({ type: 'SYNC_ALERTS' });
+    });
+  } catch (error) {
+    console.log('[SW] Alerts sync failed:', error);
+  }
+}
+
+// Message event - handle messages from main app
+self.addEventListener('message', (event) => {
+  console.log('[SW] Message received:', event.data);
+  
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+  
+  if (event.data?.type === 'CLEAR_CACHE') {
+    caches.keys().then(names => {
+      names.forEach(name => caches.delete(name));
+    });
+  }
+  
+  if (event.data?.type === 'GET_VERSION') {
+    event.source.postMessage({ type: 'VERSION', version: CACHE_NAME });
+  }
+});
+
+console.log('[SW] Service Worker loaded - Crypto Decision Hub v3.8');

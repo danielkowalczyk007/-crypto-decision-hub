@@ -1,234 +1,438 @@
 <!DOCTYPE html>
-<html lang="pl">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-  <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)" />
-  <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)" />
-  <meta name="description" content="Crypto Decision Hub - Comprehensive cryptocurrency analysis dashboard with trading signals, market data, and portfolio management" />
-  
-  <!-- PWA Meta Tags -->
-  <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="CryptoHub" />
-  <meta name="application-name" content="Crypto Decision Hub" />
-  <meta name="msapplication-TileColor" content="#0f172a" />
-  <meta name="msapplication-tap-highlight" content="no" />
-  
-  <!-- Manifest -->
-  <link rel="manifest" href="/manifest.json" />
-  
-  <!-- Icons -->
-  <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.png" />
-  <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16x16.png" />
-  <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
-  <link rel="mask-icon" href="/icons/safari-pinned-tab.svg" color="#3b82f6" />
-  
-  <!-- Splash Screens for iOS -->
-  <link rel="apple-touch-startup-image" href="/splash/apple-splash-2048-2732.png" media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
-  <link rel="apple-touch-startup-image" href="/splash/apple-splash-1668-2388.png" media="(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
-  <link rel="apple-touch-startup-image" href="/splash/apple-splash-1536-2048.png" media="(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
-  <link rel="apple-touch-startup-image" href="/splash/apple-splash-1125-2436.png" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
-  <link rel="apple-touch-startup-image" href="/splash/apple-splash-1242-2688.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
-  <link rel="apple-touch-startup-image" href="/splash/apple-splash-828-1792.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
-  <link rel="apple-touch-startup-image" href="/splash/apple-splash-1170-2532.png" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
-  <link rel="apple-touch-startup-image" href="/splash/apple-splash-1179-2556.png" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
-  <link rel="apple-touch-startup-image" href="/splash/apple-splash-1284-2778.png" media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
-  <link rel="apple-touch-startup-image" href="/splash/apple-splash-1290-2796.png" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
-
-  <title>Crypto Decision Hub</title>
-  
-  <style>
-    /* Critical CSS for fast first paint */
-    body {
-      margin: 0;
-      padding: 0;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background-color: #0f172a;
-      color: #f1f5f9;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-    }
+<html lang="pl-PL">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes" />
+    <meta name="theme-color" content="#3b82f6" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1e3a5f" media="(prefers-color-scheme: dark)" />
     
-    /* Loading spinner */
-    .app-loader {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      background: #0f172a;
-      z-index: 9999;
-    }
+    <!-- Primary Meta Tags -->
+    <title>Crypto Decision Hub - Cryptocurrency Analysis Dashboard</title>
+    <meta name="title" content="Crypto Decision Hub - Cryptocurrency Analysis Dashboard" />
+    <meta name="description" content="Comprehensive cryptocurrency analysis dashboard with real-time market data, trading scores, portfolio tracking, and DeFi metrics. Make informed crypto trading decisions." />
+    <meta name="keywords" content="crypto, cryptocurrency, bitcoin, ethereum, trading, analysis, dashboard, DeFi, portfolio" />
+    <meta name="author" content="Daniel Kowalczyk" />
+    <meta name="robots" content="index, follow" />
     
-    .app-loader-spinner {
-      width: 48px;
-      height: 48px;
-      border: 4px solid #334155;
-      border-top-color: #3b82f6;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-    }
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://crypto-decision-hub.vercel.app/" />
+    <meta property="og:title" content="Crypto Decision Hub - Cryptocurrency Analysis Dashboard" />
+    <meta property="og:description" content="Comprehensive cryptocurrency analysis dashboard with real-time market data and trading scores." />
+    <meta property="og:image" content="https://crypto-decision-hub.vercel.app/icons/icon-512x512.png" />
+    <meta property="og:locale" content="pl_PL" />
     
-    .app-loader-text {
-      margin-top: 16px;
-      color: #94a3b8;
-      font-size: 14px;
-    }
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content="https://crypto-decision-hub.vercel.app/" />
+    <meta property="twitter:title" content="Crypto Decision Hub" />
+    <meta property="twitter:description" content="Comprehensive cryptocurrency analysis dashboard with real-time market data and trading scores." />
+    <meta property="twitter:image" content="https://crypto-decision-hub.vercel.app/icons/icon-512x512.png" />
     
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
+    <!-- PWA Meta Tags -->
+    <meta name="application-name" content="Crypto Hub" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Crypto Hub" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="msapplication-TileColor" content="#3b82f6" />
+    <meta name="msapplication-TileImage" content="/icons/icon-144x144.png" />
+    <meta name="msapplication-config" content="/browserconfig.xml" />
+    <meta name="format-detection" content="telephone=no" />
     
-    /* Offline banner */
-    .offline-banner {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      background: #f59e0b;
-      color: #1e293b;
-      text-align: center;
-      padding: 8px;
-      font-size: 12px;
-      font-weight: 600;
-      z-index: 10000;
-      display: none;
-    }
+    <!-- Favicons -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="shortcut icon" href="/favicon.ico" />
     
-    .offline-banner.visible {
-      display: block;
-    }
-  </style>
-</head>
-<body>
-  <!-- Offline Banner -->
-  <div id="offline-banner" class="offline-banner">
-    📴 Jesteś offline - dane mogą być nieaktualne
-  </div>
-  
-  <!-- Loading State -->
-  <div id="app-loader" class="app-loader">
-    <div class="app-loader-spinner"></div>
-    <div class="app-loader-text">Ładowanie Crypto Decision Hub...</div>
-  </div>
-  
-  <!-- React Root -->
-  <noscript>Musisz włączyć JavaScript aby uruchomić tę aplikację.</noscript>
-  <div id="root"></div>
-  
-  <script>
-    // Hide loader when app mounts
-    window.addEventListener('load', function() {
-      setTimeout(function() {
-        var loader = document.getElementById('app-loader');
-        if (loader) {
-          loader.style.opacity = '0';
-          loader.style.transition = 'opacity 0.3s';
-          setTimeout(function() {
-            loader.style.display = 'none';
-          }, 300);
+    <!-- Apple Touch Icons -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152x152.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-192x192.png" />
+    <link rel="apple-touch-icon" sizes="167x167" href="/icons/icon-192x192.png" />
+    
+    <!-- Apple Splash Screens -->
+    <link rel="apple-touch-startup-image" href="/icons/icon-512x512.png" />
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+    
+    <!-- Preconnect to APIs for faster loading -->
+    <link rel="preconnect" href="https://api.coingecko.com" />
+    <link rel="preconnect" href="https://api.binance.com" />
+    <link rel="preconnect" href="https://fapi.binance.com" />
+    <link rel="preconnect" href="https://api.llama.fi" />
+    <link rel="dns-prefetch" href="https://api.coingecko.com" />
+    <link rel="dns-prefetch" href="https://api.binance.com" />
+    
+    <!-- Canonical URL -->
+    <link rel="canonical" href="https://crypto-decision-hub.vercel.app/" />
+    
+    <style>
+      /* Critical CSS for initial load */
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+        background-color: #0f172a;
+        color: #e2e8f0;
+        min-height: 100vh;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      
+      #root {
+        min-height: 100vh;
+      }
+      
+      /* Loading spinner */
+      .app-loader {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: #0f172a;
+        z-index: 9999;
+      }
+      
+      .app-loader-spinner {
+        width: 48px;
+        height: 48px;
+        border: 4px solid #1e293b;
+        border-top-color: #3b82f6;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      
+      .app-loader-text {
+        margin-top: 16px;
+        color: #94a3b8;
+        font-size: 14px;
+      }
+      
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+      
+      /* Offline indicator */
+      .offline-indicator {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        background: linear-gradient(90deg, #f59e0b, #d97706);
+        color: #1f2937;
+        text-align: center;
+        padding: 8px 16px;
+        font-size: 13px;
+        font-weight: 600;
+        z-index: 10000;
+        animation: slideDown 0.3s ease-out;
+      }
+      
+      @keyframes slideDown {
+        from { transform: translateY(-100%); }
+        to { transform: translateY(0); }
+      }
+      
+      /* PWA Install Prompt */
+      .pwa-install-prompt {
+        position: fixed;
+        bottom: 80px;
+        left: 16px;
+        right: 16px;
+        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        border: 1px solid #334155;
+        border-radius: 16px;
+        padding: 16px;
+        z-index: 9999;
+        box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4);
+        animation: slideUp 0.4s ease-out;
+      }
+      
+      @keyframes slideUp {
+        from { 
+          transform: translateY(100%); 
+          opacity: 0; 
         }
-      }, 100);
-    });
-    
-    // Offline detection
-    function updateOnlineStatus() {
-      var banner = document.getElementById('offline-banner');
-      if (banner) {
-        if (!navigator.onLine) {
-          banner.classList.add('visible');
-        } else {
-          banner.classList.remove('visible');
+        to { 
+          transform: translateY(0); 
+          opacity: 1; 
         }
       }
-    }
+      
+      /* Update banner */
+      .update-banner {
+        position: fixed;
+        bottom: 80px;
+        left: 16px;
+        right: 16px;
+        background: linear-gradient(135deg, #059669 0%, #047857 100%);
+        color: white;
+        border-radius: 12px;
+        padding: 12px 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        z-index: 9998;
+        box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);
+      }
+      
+      .update-banner button {
+        background: white;
+        color: #059669;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      
+      /* No script fallback */
+      noscript {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        padding: 20px;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <noscript>
+      <div style="max-width: 400px;">
+        <h1 style="margin-bottom: 16px;">JavaScript Required</h1>
+        <p>Crypto Decision Hub requires JavaScript to run. Please enable JavaScript in your browser settings.</p>
+      </div>
+    </noscript>
     
-    window.addEventListener('online', updateOnlineStatus);
-    window.addEventListener('offline', updateOnlineStatus);
-    updateOnlineStatus();
+    <div id="root">
+      <!-- Loading state while React initializes -->
+      <div class="app-loader" id="app-loader">
+        <div class="app-loader-spinner"></div>
+        <div class="app-loader-text">Loading Crypto Hub...</div>
+      </div>
+    </div>
     
-    // Service Worker Registration
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', function() {
-        navigator.serviceWorker.register('/service-worker.js')
-          .then(function(registration) {
-            console.log('[App] SW registered:', registration.scope);
+    <script>
+      // Remove loader when React mounts
+      window.addEventListener('DOMContentLoaded', () => {
+        setTimeout(() => {
+          const loader = document.getElementById('app-loader');
+          if (loader && document.querySelector('#root > div:not(.app-loader)')) {
+            loader.style.opacity = '0';
+            loader.style.transition = 'opacity 0.3s';
+            setTimeout(() => loader.remove(), 300);
+          }
+        }, 100);
+      });
+      
+      // Service Worker Registration
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', async () => {
+          try {
+            const registration = await navigator.serviceWorker.register('/service-worker.js', {
+              scope: '/'
+            });
             
-            // Check for updates periodically
-            setInterval(function() {
-              registration.update();
-            }, 60 * 60 * 1000); // Every hour
+            console.log('[App] Service Worker registered:', registration.scope);
             
-            // Handle updates
-            registration.addEventListener('updatefound', function() {
-              var newWorker = registration.installing;
-              console.log('[App] New SW found, installing...');
+            // Check for updates
+            registration.addEventListener('updatefound', () => {
+              const newWorker = registration.installing;
+              console.log('[App] New service worker installing...');
               
-              newWorker.addEventListener('statechange', function() {
+              newWorker.addEventListener('statechange', () => {
                 if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                   // New version available
-                  if (confirm('Nowa wersja aplikacji dostępna! Odświeżyć?')) {
-                    newWorker.postMessage({ type: 'SKIP_WAITING' });
-                    window.location.reload();
-                  }
+                  showUpdateBanner(registration);
                 }
               });
             });
-          })
-          .catch(function(error) {
-            console.error('[App] SW registration failed:', error);
-          });
-        
-        // Handle controller change
-        navigator.serviceWorker.addEventListener('controllerchange', function() {
-          console.log('[App] SW controller changed');
+            
+            // Check for updates periodically (every 30 minutes)
+            setInterval(() => {
+              registration.update();
+            }, 30 * 60 * 1000);
+            
+          } catch (error) {
+            console.log('[App] Service Worker registration failed:', error);
+          }
         });
-      });
-    }
-    
-    // PWA Install Prompt
-    var deferredPrompt;
-    window.addEventListener('beforeinstallprompt', function(e) {
-      console.log('[App] Install prompt available');
-      e.preventDefault();
-      deferredPrompt = e;
-      
-      // Dispatch custom event for React to handle
-      window.dispatchEvent(new CustomEvent('pwaInstallAvailable', { detail: e }));
-    });
-    
-    window.addEventListener('appinstalled', function(e) {
-      console.log('[App] PWA installed');
-      deferredPrompt = null;
-      window.dispatchEvent(new CustomEvent('pwaInstalled'));
-    });
-    
-    // Expose install function for React
-    window.installPWA = async function() {
-      if (!deferredPrompt) {
-        console.log('[App] No install prompt available');
-        return false;
+        
+        // Handle controller change (new SW activated)
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          console.log('[App] New service worker activated');
+        });
+        
+        // Listen for messages from SW
+        navigator.serviceWorker.addEventListener('message', (event) => {
+          console.log('[App] Message from SW:', event.data);
+          
+          if (event.data?.type === 'SYNC_PORTFOLIO') {
+            window.dispatchEvent(new CustomEvent('sync-portfolio'));
+          }
+          if (event.data?.type === 'SYNC_ALERTS') {
+            window.dispatchEvent(new CustomEvent('sync-alerts'));
+          }
+        });
       }
       
-      deferredPrompt.prompt();
-      var result = await deferredPrompt.userChoice;
-      console.log('[App] Install choice:', result.outcome);
-      deferredPrompt = null;
-      return result.outcome === 'accepted';
-    };
-    
-    // Check if running as PWA
-    window.isPWA = function() {
-      return window.matchMedia('(display-mode: standalone)').matches ||
-             window.navigator.standalone === true ||
-             document.referrer.includes('android-app://');
-    };
-  </script>
-</body>
+      // Show update banner
+      function showUpdateBanner(registration) {
+        const existing = document.querySelector('.update-banner');
+        if (existing) return;
+        
+        const banner = document.createElement('div');
+        banner.className = 'update-banner';
+        banner.innerHTML = `
+          <span>🚀 New version available!</span>
+          <button id="update-btn">Update Now</button>
+        `;
+        document.body.appendChild(banner);
+        
+        document.getElementById('update-btn').addEventListener('click', () => {
+          if (registration.waiting) {
+            registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+          }
+          banner.remove();
+          window.location.reload();
+        });
+      }
+      
+      // Online/Offline status
+      function updateOnlineStatus() {
+        const existing = document.querySelector('.offline-indicator');
+        
+        if (!navigator.onLine) {
+          if (existing) return;
+          const indicator = document.createElement('div');
+          indicator.className = 'offline-indicator';
+          indicator.innerHTML = '📡 You are offline - showing cached data';
+          document.body.prepend(indicator);
+          
+          // Adjust body padding
+          document.body.style.paddingTop = '36px';
+        } else if (existing) {
+          existing.remove();
+          document.body.style.paddingTop = '0';
+          
+          // Trigger data refresh when back online
+          window.dispatchEvent(new CustomEvent('online-restored'));
+        }
+      }
+      
+      window.addEventListener('online', updateOnlineStatus);
+      window.addEventListener('offline', updateOnlineStatus);
+      updateOnlineStatus();
+      
+      // PWA Install Prompt
+      let deferredPrompt = null;
+      
+      window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        
+        // Check if user dismissed recently
+        const dismissed = localStorage.getItem('pwa-install-dismissed');
+        if (dismissed) {
+          const dismissedTime = parseInt(dismissed, 10);
+          // Don't show again for 7 days
+          if (Date.now() - dismissedTime < 7 * 24 * 60 * 60 * 1000) {
+            return;
+          }
+        }
+        
+        // Show install prompt after 3 seconds
+        setTimeout(showInstallPrompt, 3000);
+      });
+      
+      function showInstallPrompt() {
+        if (!deferredPrompt) return;
+        
+        const existing = document.querySelector('.pwa-install-prompt');
+        if (existing) return;
+        
+        const prompt = document.createElement('div');
+        prompt.className = 'pwa-install-prompt';
+        prompt.innerHTML = `
+          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+            <img src="/icons/icon-72x72.png" alt="Crypto Hub" 
+                 style="width: 48px; height: 48px; border-radius: 12px;" 
+                 onerror="this.style.display='none'">
+            <div>
+              <div style="font-weight: 600; font-size: 16px; color: #f1f5f9;">Install Crypto Hub</div>
+              <div style="font-size: 13px; color: #94a3b8;">Add to your home screen for quick access</div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 12px;">
+            <button id="pwa-install-btn" style="flex: 1; background: linear-gradient(135deg, #3b82f6, #2563eb); color: white; border: none; padding: 12px; border-radius: 10px; font-weight: 600; font-size: 15px; cursor: pointer;">
+              Install App
+            </button>
+            <button id="pwa-dismiss-btn" style="background: transparent; color: #94a3b8; border: 1px solid #334155; padding: 12px 20px; border-radius: 10px; font-size: 15px; cursor: pointer;">
+              Later
+            </button>
+          </div>
+        `;
+        document.body.appendChild(prompt);
+        
+        document.getElementById('pwa-install-btn').addEventListener('click', async () => {
+          prompt.remove();
+          
+          if (deferredPrompt) {
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            console.log('[App] Install prompt outcome:', outcome);
+            deferredPrompt = null;
+          }
+        });
+        
+        document.getElementById('pwa-dismiss-btn').addEventListener('click', () => {
+          prompt.remove();
+          localStorage.setItem('pwa-install-dismissed', Date.now().toString());
+        });
+      }
+      
+      // App installed event
+      window.addEventListener('appinstalled', () => {
+        console.log('[App] PWA installed successfully');
+        deferredPrompt = null;
+        
+        // Remove install prompt if visible
+        const prompt = document.querySelector('.pwa-install-prompt');
+        if (prompt) prompt.remove();
+        
+        // Show success message
+        const toast = document.createElement('div');
+        toast.style.cssText = 'position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); background: #059669; color: white; padding: 12px 24px; border-radius: 8px; font-weight: 500; z-index: 10000; animation: slideUp 0.3s ease-out;';
+        toast.textContent = '✓ App installed successfully!';
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
+      });
+      
+      // Register background sync (if supported)
+      async function registerBackgroundSync() {
+        if ('serviceWorker' in navigator && 'SyncManager' in window) {
+          const registration = await navigator.serviceWorker.ready;
+          try {
+            await registration.sync.register('sync-portfolio');
+            await registration.sync.register('sync-alerts');
+            console.log('[App] Background sync registered');
+          } catch (err) {
+            console.log('[App] Background sync not supported:', err);
+          }
+        }
+      }
+      
+      registerBackgroundSync();
+    </script>
+  </body>
 </html>

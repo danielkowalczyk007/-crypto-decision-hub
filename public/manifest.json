@@ -1,7 +1,7 @@
 {
   "name": "Crypto Decision Hub",
   "short_name": "CryptoHub",
-  "description": "Comprehensive cryptocurrency analysis dashboard with trading signals, market data, and portfolio management",
+  "description": "Comprehensive cryptocurrency analysis dashboard with real-time market data, trading scores, and DeFi metrics",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0f172a",
@@ -60,36 +60,29 @@
       "purpose": "maskable any"
     }
   ],
-  "screenshots": [
-    {
-      "src": "/screenshots/mobile-home.png",
-      "sizes": "390x844",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "Home screen with market overview"
-    },
-    {
-      "src": "/screenshots/mobile-charts.png",
-      "sizes": "390x844",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "Technical analysis charts"
-    }
-  ],
   "shortcuts": [
     {
       "name": "Market Overview",
-      "short_name": "Markets",
-      "description": "View current market prices",
+      "short_name": "Market",
+      "description": "View current market conditions",
       "url": "/?tab=crypto",
-      "icons": [{ "src": "/icons/shortcut-market.png", "sizes": "96x96" }]
+      "icons": [{ "src": "/icons/icon-96x96.png", "sizes": "96x96" }]
     },
     {
       "name": "Portfolio",
       "short_name": "Portfolio",
       "description": "Check your portfolio",
       "url": "/?tab=portfolio",
-      "icons": [{ "src": "/icons/shortcut-portfolio.png", "sizes": "96x96" }]
+      "icons": [{ "src": "/icons/icon-96x96.png", "sizes": "96x96" }]
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/dashboard.png",
+      "sizes": "1080x1920",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Crypto Dashboard"
     }
   ],
   "related_applications": [],
