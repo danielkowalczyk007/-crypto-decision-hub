@@ -573,6 +573,231 @@ const fetchComparisonData = async (coinIds) => {
   }
 };
 
+// ============== EXPORT FUNCTIONS ==============
+const exportToCSV = (data, filename, headers) => {
+  if (!data || data.length === 0) return;
+  const csvHeaders = headers.map(h => h.label).join(',');
+  const csvRows = data.map(row => headers.map(h => {
+    let val = h.accessor(row);
+    if (typeof val === 'string' && val.includes(',')) val = `"${val}"`;
+    return val;
+  }).join(','));
+  const csvContent = [csvHeaders, ...csvRows].join('\n');
+  const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${filename}_${new Date().toISOString().split('T')[0]}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+};
+
+const exportToPDF = (title, sections, theme = 'dark') => {
+  const isDark = theme === 'dark';
+  const bgColor = isDark ? '#0f172a' : '#ffffff';
+  const textColor = isDark ? '#f8fafc' : '#1e293b';
+  const mutedColor = isDark ? '#94a3b8' : '#64748b';
+  const borderColor = isDark ? '#334155' : '#e2e8f0';
+  const cardBg = isDark ? '#1e293b' : '#f8fafc';
+  
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <title>${title}</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: ${bgColor}; color: ${textColor}; padding: 20px; }
+        .header { text-align: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 2px solid ${borderColor}; }
+        .header h1 { font-size: 24px; margin-bottom: 8px; }
+        .header .subtitle { font-size: 12px; color: ${mutedColor}; }
+        .section { margin-bottom: 20px; background: ${cardBg}; border-radius: 12px; padding: 16px; border: 1px solid ${borderColor}; }
+        .section-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; }
+        th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid ${borderColor}; }
+        th { background: ${isDark ? '#334155' : '#e2e8f0'}; font-weight: 600; color: ${mutedColor}; }
+        .positive { color: #22c55e; }
+        .negative { color: #ef4444; }
+        .neutral { color: ${mutedColor}; }
+        .metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+        .metric-card { background: ${bgColor}; padding: 12px; border-radius: 8px; text-align: center; }
+        .metric-label { font-size: 10px; color: ${mutedColor}; margin-bottom: 4px; }
+        .metric-value { font-size: 16px; font-weight: 700; }
+        .footer { margin-top: 24px; padding-top: 16px; border-top: 1px solid ${borderColor}; text-align: center; font-size: 10px; color: ${mutedColor}; }
+        @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <h1>📊 ${title}</h1>
+        <div class="subtitle">Wygenerowano: ${new Date().toLocaleString('pl-PL')} | Crypto Decision Hub</div>
+      </div>
+      ${sections.map(section => `
+        <div class="section">
+          <div class="section-title">${section.icon || ''} ${section.title}</div>
+          ${section.content}
+        </div>
+      `).join('')}
+      <div class="footer">
+        Crypto Decision Hub | Dane z CoinGecko, Binance, DefiLlama, FRED | © ${new Date().getFullYear()}
+      </div>
+    </body>
+    </html>
+  `;
+  
+  const printWindow = window.open('', '_blank');
+  printWindow.document.write(htmlContent);
+  printWindow.document.close();
+  setTimeout(() => { printWindow.print(); }, 500);
+};
+
+const generateComparisonPDFContent = (data, theme) => {
+  if (!data || data.length === 0) return [];
+  const isDark = theme === 'dark';
+  
+  const tableRows = data.map(coin => `
+    <tr>
+      <td><strong>${coin.symbol}</strong> <span style="color: ${isDark ? '#94a3b8' : '#64748b'}; font-size: 10px;">${coin.name}</span></td>
+      <td style="text-align: right;">$${coin.price?.toLocaleString('en-US', { maximumFractionDigits: coin.price >= 1 ? 2 : 6 }) || '--'}</td>
+      <td style="text-align: right;" class="${(coin.change1h || 0) >= 0 ? 'positive' : 'negative'}">${coin.change1h?.toFixed(2) || '--'}%</td>
+      <td style="text-align: right;" class="${(coin.change24h || 0) >= 0 ? 'positive' : 'negative'}">${coin.change24h?.toFixed(2) || '--'}%</td>
+      <td style="text-align: right;" class="${(coin.change7d || 0) >= 0 ? 'positive' : 'negative'}">${coin.change7d?.toFixed(2) || '--'}%</td>
+      <td style="text-align: right;">$${coin.volume >= 1e9 ? (coin.volume / 1e9).toFixed(1) + 'B' : (coin.volume / 1e6).toFixed(0) + 'M'}</td>
+      <td style="text-align: right;">$${coin.marketCap >= 1e12 ? (coin.marketCap / 1e12).toFixed(2) + 'T' : (coin.marketCap / 1e9).toFixed(1) + 'B'}</td>
+    </tr>
+  `).join('');
+  
+  const avg24h = data.reduce((a, c) => a + (c.change24h || 0), 0) / data.length;
+  const best = [...data].sort((a, b) => (b.change24h || 0) - (a.change24h || 0))[0];
+  const worst = [...data].sort((a, b) => (a.change24h || 0) - (b.change24h || 0))[0];
+  
+  return [
+    {
+      title: 'Porównanie kryptowalut',
+      icon: '📊',
+      content: `
+        <table>
+          <thead>
+            <tr>
+              <th>Coin</th>
+              <th style="text-align: right;">Cena</th>
+              <th style="text-align: right;">1h</th>
+              <th style="text-align: right;">24h</th>
+              <th style="text-align: right;">7d</th>
+              <th style="text-align: right;">Volume</th>
+              <th style="text-align: right;">Market Cap</th>
+            </tr>
+          </thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      `
+    },
+    {
+      title: 'Podsumowanie',
+      icon: '📈',
+      content: `
+        <div class="metric-grid">
+          <div class="metric-card">
+            <div class="metric-label">Średnia zmiana 24h</div>
+            <div class="metric-value ${avg24h >= 0 ? 'positive' : 'negative'}">${avg24h >= 0 ? '+' : ''}${avg24h.toFixed(2)}%</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Najlepszy 24h</div>
+            <div class="metric-value positive">${best?.symbol} (${best?.change24h?.toFixed(2)}%)</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Najgorszy 24h</div>
+            <div class="metric-value negative">${worst?.symbol} (${worst?.change24h?.toFixed(2)}%)</div>
+          </div>
+        </div>
+      `
+    }
+  ];
+};
+
+const generateMarketReportPDFContent = (cgData, binanceData, defiData, altseasonData, dayScore, swingScore, hodlScore, theme) => {
+  const isDark = theme === 'dark';
+  const fg = cgData?.fearGreed?.value || '--';
+  const btcPrice = cgData?.btcPrice?.value;
+  const btcChange = cgData?.btcPrice?.change;
+  const ethPrice = cgData?.ethPrice?.value;
+  const ethChange = cgData?.ethPrice?.change;
+  const funding = binanceData?.fundingRate?.value;
+  const tvl = defiData?.tvl?.value;
+  const tvlChange = defiData?.tvl?.change;
+  
+  const getScoreClass = (score) => score >= 55 ? 'positive' : score <= 45 ? 'negative' : 'neutral';
+  
+  return [
+    {
+      title: 'Trading Scores',
+      icon: '🎯',
+      content: `
+        <div class="metric-grid">
+          <div class="metric-card">
+            <div class="metric-label">Day Trading</div>
+            <div class="metric-value ${getScoreClass(dayScore)}">${dayScore}/100</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Swing</div>
+            <div class="metric-value ${getScoreClass(swingScore)}">${swingScore}/100</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">HODL</div>
+            <div class="metric-value ${getScoreClass(hodlScore)}">${hodlScore}/100</div>
+          </div>
+        </div>
+      `
+    },
+    {
+      title: 'Ceny głównych kryptowalut',
+      icon: '💰',
+      content: `
+        <div class="metric-grid">
+          <div class="metric-card">
+            <div class="metric-label">Bitcoin (BTC)</div>
+            <div class="metric-value">$${btcPrice?.toLocaleString() || '--'}</div>
+            <div class="${(btcChange || 0) >= 0 ? 'positive' : 'negative'}" style="font-size: 12px;">${btcChange >= 0 ? '+' : ''}${btcChange?.toFixed(2) || '--'}%</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Ethereum (ETH)</div>
+            <div class="metric-value">$${ethPrice?.toLocaleString() || '--'}</div>
+            <div class="${(ethChange || 0) >= 0 ? 'positive' : 'negative'}" style="font-size: 12px;">${ethChange >= 0 ? '+' : ''}${ethChange?.toFixed(2) || '--'}%</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Fear & Greed</div>
+            <div class="metric-value">${fg}</div>
+            <div style="font-size: 10px; color: ${isDark ? '#94a3b8' : '#64748b'};">${fg < 25 ? 'Extreme Fear' : fg < 45 ? 'Fear' : fg < 55 ? 'Neutral' : fg < 75 ? 'Greed' : 'Extreme Greed'}</div>
+          </div>
+        </div>
+      `
+    },
+    {
+      title: 'Wskaźniki rynkowe',
+      icon: '📊',
+      content: `
+        <div class="metric-grid">
+          <div class="metric-card">
+            <div class="metric-label">Funding Rate</div>
+            <div class="metric-value ${(funding || 0) > 0.01 ? 'negative' : (funding || 0) < -0.01 ? 'positive' : 'neutral'}">${funding?.toFixed(4) || '--'}%</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Total TVL</div>
+            <div class="metric-value">$${tvl?.toFixed(1) || '--'}B</div>
+            <div class="${(tvlChange || 0) >= 0 ? 'positive' : 'negative'}" style="font-size: 12px;">${tvlChange >= 0 ? '+' : ''}${tvlChange?.toFixed(2) || '--'}%</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Altseason Index</div>
+            <div class="metric-value">${altseasonData?.altseasonIndex || '--'}</div>
+            <div style="font-size: 10px; color: ${isDark ? '#94a3b8' : '#64748b'};">${(altseasonData?.altseasonIndex || 0) > 60 ? 'Altseason' : 'BTC Season'}</div>
+          </div>
+        </div>
+      `
+    }
+  ];
+};
+
 const ComparisonMode = ({ theme, onHelp }) => {
   const t = useTheme(theme);
   const [selectedCoins, setSelectedCoins] = useState(['bitcoin', 'ethereum', 'solana']);
@@ -652,13 +877,46 @@ const ComparisonMode = ({ theme, onHelp }) => {
     }));
   })() : [];
 
+  // Export handlers
+  const handleExportCSV = () => {
+    if (!comparisonData) return;
+    const headers = [
+      { label: 'Symbol', accessor: (r) => r.symbol },
+      { label: 'Name', accessor: (r) => r.name },
+      { label: 'Price (USD)', accessor: (r) => r.price?.toFixed(6) || '' },
+      { label: 'Change 1h (%)', accessor: (r) => r.change1h?.toFixed(2) || '' },
+      { label: 'Change 24h (%)', accessor: (r) => r.change24h?.toFixed(2) || '' },
+      { label: 'Change 7d (%)', accessor: (r) => r.change7d?.toFixed(2) || '' },
+      { label: 'Change 30d (%)', accessor: (r) => r.change30d?.toFixed(2) || '' },
+      { label: 'Volume 24h (USD)', accessor: (r) => r.volume?.toFixed(0) || '' },
+      { label: 'Market Cap (USD)', accessor: (r) => r.marketCap?.toFixed(0) || '' },
+      { label: 'ATH (USD)', accessor: (r) => r.ath?.toFixed(2) || '' },
+      { label: 'ATH Change (%)', accessor: (r) => r.athChange?.toFixed(2) || '' }
+    ];
+    exportToCSV(sortedData, 'crypto_comparison', headers);
+  };
+
+  const handleExportPDF = () => {
+    if (!comparisonData) return;
+    const sections = generateComparisonPDFContent(sortedData, theme);
+    exportToPDF('Porównanie kryptowalut', sections, theme);
+  };
+
   return (
     <div className="space-y-3">
       {/* Coin Selector */}
       <div className={`p-3 ${t.card} rounded-xl border ${t.border}`}>
         <div className="flex justify-between items-center mb-3">
           <div className={`text-xs font-semibold ${t.text}`}>🎯 Wybierz coiny (max 5)</div>
-          <span className={`text-[10px] px-2 py-1 rounded-full ${t.bg} ${t.muted}`}>{selectedCoins.length}/5</span>
+          <div className="flex items-center gap-2">
+            <span className={`text-[10px] px-2 py-1 rounded-full ${t.bg} ${t.muted}`}>{selectedCoins.length}/5</span>
+            {comparisonData && (
+              <div className="flex gap-1">
+                <button onClick={handleExportCSV} className={`px-2 py-1 rounded text-[9px] font-semibold cursor-pointer border ${t.border} ${t.bg} ${t.muted} hover:text-green-500 hover:border-green-500`} title="Export CSV">📄 CSV</button>
+                <button onClick={handleExportPDF} className={`px-2 py-1 rounded text-[9px] font-semibold cursor-pointer border ${t.border} ${t.bg} ${t.muted} hover:text-blue-500 hover:border-blue-500`} title="Export PDF">📑 PDF</button>
+              </div>
+            )}
+          </div>
         </div>
         <div className="flex flex-wrap gap-1.5">
           {COMPARISON_COINS.map(coin => (
@@ -1144,6 +1402,7 @@ function App() {
             <h1 className={\`text-base font-bold \${t.text} m-0\`}>Crypto Decision Hub</h1>
           </div>
           <div className="flex items-center gap-2">
+            <button onClick={() => { const sections = generateMarketReportPDFContent(cgData, binanceData, defiData, altseasonData, dayScore, swingScore, hodlScore, theme); exportToPDF('Market Report', sections, theme); }} className={\`p-2 rounded-lg \${t.bg} border \${t.border} cursor-pointer text-base\`} title="Export Market Report">📑</button>
             <button onClick={() => setShowAlertPanel(true)} className={\`relative p-2 rounded-lg \${t.bg} border \${t.border} cursor-pointer\`}>
               <span className="text-base">🔔</span>
               {alerts.length > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-blue-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">{alerts.length}</span>}
