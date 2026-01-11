@@ -247,6 +247,21 @@ const helpContent = {
   }
 };
 
+// ============== THEME HOOK ==============
+const useTheme = (theme) => {
+  const isDark = theme === 'dark';
+  return {
+    isDark,
+    bg: isDark ? 'bg-slate-900' : 'bg-white',
+    card: isDark ? 'bg-slate-800' : 'bg-slate-100',
+    text: isDark ? 'text-slate-100' : 'text-slate-900',
+    muted: isDark ? 'text-slate-400' : 'text-slate-500',
+    border: isDark ? 'border-slate-700' : 'border-slate-200',
+    input: isDark ? 'bg-slate-700 text-white border-slate-600' : 'bg-white text-slate-900 border-slate-300',
+    hover: isDark ? 'hover:bg-slate-700' : 'hover:bg-slate-200'
+  };
+};
+
 // ============== UI COMPONENTS WITH TAILWIND ==============
 const HelpModal = ({ helpKey, onClose, theme }) => {
   const content = helpContent[helpKey];
