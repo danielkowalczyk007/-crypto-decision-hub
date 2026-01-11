@@ -132,9 +132,9 @@ const closePosition = async (apiKey, secretKey, symbol, positionAmt) => {
 // ============== COINGECKO API ==============
 const fetchCoinGeckoData = async () => {
   try {
-    // Fetch główne dane
+    // Fetch główne dane - dodano binancecoin
     const [pricesRes, globalRes, fgRes] = await Promise.all([
-      fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true&include_market_cap=true'),
+      fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,binancecoin&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true&include_market_cap=true'),
       fetch('https://api.coingecko.com/api/v3/global'),
       fetch('https://api.alternative.me/fng/?limit=1')
     ]);
@@ -166,6 +166,11 @@ const fetchCoinGeckoData = async () => {
         value: prices.solana?.usd || 0,
         change: prices.solana?.usd_24h_change || 0,
         volume: prices.solana?.usd_24h_vol || 0
+      },
+      bnbPrice: {
+        value: prices.binancecoin?.usd || 0,
+        change: prices.binancecoin?.usd_24h_change || 0,
+        volume: prices.binancecoin?.usd_24h_vol || 0
       },
       btcDominance: {
         value: parseFloat((global.data?.market_cap_percentage?.btc || 0).toFixed(2))
@@ -593,6 +598,30 @@ const helpContent = {
     tip: 'SOL często outperformuje w czasie altseason - obserwuj volume.',
     source: 'CoinGecko API'
   },
+  bnbPrice: {
+    title: 'Cena BNB',
+    emoji: '🔶',
+    description: 'Aktualna cena BNB (Binance Coin) w USD. Token ekosystemu Binance, używany do zniżek na opłaty i DeFi.',
+    interpretation: [
+      { condition: '> +5% 24h', signal: 'bullish', text: '🟢 Silny wzrost - wzrost aktywności na Binance' },
+      { condition: '-2% do +2%', signal: 'neutral', text: '🟡 Stabilny - normalne wahania' },
+      { condition: '< -5% 24h', signal: 'bearish', text: '🔴 Spadek - presja sprzedażowa' }
+    ],
+    tip: 'BNB często koreluje z volumem na Binance i nowymi launchpadami.',
+    source: 'CoinGecko API'
+  },
+  totalMarketCap: {
+    title: 'Total Market Cap',
+    emoji: '🌍',
+    description: 'Całkowita kapitalizacja rynku kryptowalut. Pokazuje ile kapitału jest zainwestowane w crypto.',
+    interpretation: [
+      { condition: '> $3T', signal: 'bullish', text: '🟢 ATH territory - silna hossa' },
+      { condition: '$2T - $3T', signal: 'neutral', text: '🟡 Zdrowy rynek - normalne warunki' },
+      { condition: '< $1.5T', signal: 'bearish', text: '🔴 Bear market - kapitał odpływa' }
+    ],
+    tip: 'Rosnący market cap przy spadającej dominacji BTC = najlepszy czas na altcoiny.',
+    source: 'CoinGecko API'
+  },
   btcDominance: {
     title: 'BTC Dominance',
     emoji: '👑',
@@ -616,6 +645,30 @@ const helpContent = {
     ],
     tip: 'Łącz z ETH/BTC ratio dla potwierdzenia trendu altcoinów.',
     source: 'Algorytm wewnętrzny'
+  },
+  ethBtcRatio: {
+    title: 'ETH/BTC Ratio',
+    emoji: '⚖️',
+    description: 'Stosunek ceny ETH do BTC. Pokazuje siłę Ethereum względem Bitcoina - kluczowy wskaźnik altseason.',
+    interpretation: [
+      { condition: '> 0.05', signal: 'bullish', text: '🟢 Altseason - ETH dominuje' },
+      { condition: '0.035 - 0.05', signal: 'neutral', text: '🟡 Równowaga - normalne warunki' },
+      { condition: '< 0.035', signal: 'bearish', text: '🔴 BTC Season - kapitał w BTC' }
+    ],
+    tip: 'Rosnący ETH/BTC przy wysokim volume często poprzedza altseason.',
+    source: 'CoinGecko API'
+  },
+  total2: {
+    title: 'Total2 Market Cap',
+    emoji: '📊',
+    description: 'Całkowita kapitalizacja altcoinów (bez BTC). Pokazuje siłę całego rynku altcoinów.',
+    interpretation: [
+      { condition: '> $1.5T', signal: 'bullish', text: '🟢 Silny altcoin market - hossa altów' },
+      { condition: '$1T - $1.5T', signal: 'neutral', text: '🟡 Zdrowy rynek altów' },
+      { condition: '< $800B', signal: 'bearish', text: '🔴 Słaby altcoin market' }
+    ],
+    tip: 'Rosnący Total2 przy spadającej dominacji BTC = najlepszy czas na altcoiny.',
+    source: 'CoinGecko API'
   },
   stablecoinFlows: {
     title: 'Stablecoin Flows',
@@ -821,12 +874,17 @@ const AIInsight = ({ cgData, binanceData, altseasonData, dayScore, swingScore, h
   const funding = binanceData?.fundingRate?.value || 0;
   const btcChange = cgData?.btcPrice?.change || 0;
   const altIndex = altseasonData?.altseasonIndex || 50;
+  const avg = Math.round((dayScore + swingScore + hodlScore) / 3);
+  
   if (fg < 25 && funding < 0) { insight = `Extreme Fear (${fg}) + ujemny Funding = potencjalne dno.`; signal = 'bullish'; emoji = '🟢'; }
   else if (fg > 75 && funding > 0.03) { insight = `Extreme Greed (${fg}) + wysoki Funding = rynek przegrzany.`; signal = 'bearish'; emoji = '🔴'; }
   else if (altIndex > 60) { insight = `Altseason Index (${altIndex}) wysoki = rotacja do altów.`; signal = 'bullish'; emoji = '🚀'; }
   else if (btcChange > 5) { insight = `BTC +${btcChange.toFixed(1)}% = silne momentum.`; signal = 'bullish'; emoji = '📈'; }
   else if (btcChange < -5) { insight = `BTC ${btcChange.toFixed(1)}% = korekta.`; signal = 'bearish'; emoji = '📉'; }
-  else { const avg = Math.round((dayScore + swingScore + hodlScore) / 3); insight = `Mieszane sygnały (avg: ${avg}). Obserwuj.`; }
+  else if (avg >= 60) { insight = `Score'y pozytywne (D:${dayScore}/S:${swingScore}/H:${hodlScore}) = korzystne warunki.`; signal = 'bullish'; emoji = '✅'; }
+  else if (avg <= 35) { insight = `Score'y niskie (D:${dayScore}/S:${swingScore}/H:${hodlScore}) = ostrożność wskazana.`; signal = 'bearish'; emoji = '⚠️'; }
+  else { insight = `Neutralne warunki. F&G: ${fg}, Score avg: ${avg}. Czekaj na wyraźny sygnał.`; }
+  
   const bgClass = signal === 'bullish' ? 'bg-green-500/15 border-l-green-500' : signal === 'bearish' ? 'bg-red-500/15 border-l-red-500' : 'bg-yellow-500/15 border-l-yellow-500';
   return (
     <div className="px-3 mt-3 mb-3">
@@ -2087,6 +2145,7 @@ function App() {
         {/* Crypto Tab */}
         {activeTab === 'crypto' && (
           <div className="space-y-3">
+            {/* Row 1: BTC, ETH */}
             <div className="grid grid-cols-2 gap-3">
               <Card helpKey="btcPrice" onHelp={setHelpModal} theme={theme} isLive signalColor={(cgData?.btcPrice?.change || 0) > 0 ? 'positive' : (cgData?.btcPrice?.change || 0) < 0 ? 'negative' : undefined}>
                 <div className={`text-[10px] ${t.muted} mb-1`}>₿ Bitcoin</div>
@@ -2102,6 +2161,9 @@ function App() {
                   <div className={`text-xs font-semibold ${(cgData?.ethPrice?.change || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatChange(cgData?.ethPrice?.change)}</div>
                 </>}
               </Card>
+            </div>
+            {/* Row 2: SOL, BNB */}
+            <div className="grid grid-cols-2 gap-3">
               <Card helpKey="solPrice" onHelp={setHelpModal} theme={theme} isLive signalColor={(cgData?.solPrice?.change || 0) > 0 ? 'positive' : (cgData?.solPrice?.change || 0) < 0 ? 'negative' : undefined}>
                 <div className={`text-[10px] ${t.muted} mb-1`}>◎ Solana</div>
                 {loading ? <SkeletonLoader width="w-24" height="h-6" theme={theme} /> : <>
@@ -2109,6 +2171,16 @@ function App() {
                   <div className={`text-xs font-semibold ${(cgData?.solPrice?.change || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatChange(cgData?.solPrice?.change)}</div>
                 </>}
               </Card>
+              <Card helpKey="bnbPrice" onHelp={setHelpModal} theme={theme} isLive signalColor={(cgData?.bnbPrice?.change || 0) > 0 ? 'positive' : (cgData?.bnbPrice?.change || 0) < 0 ? 'negative' : undefined}>
+                <div className={`text-[10px] ${t.muted} mb-1`}>🔶 BNB</div>
+                {loading ? <SkeletonLoader width="w-24" height="h-6" theme={theme} /> : <>
+                  <div className={`text-lg font-bold ${t.text}`}>{formatPrice(cgData?.bnbPrice?.value)}</div>
+                  <div className={`text-xs font-semibold ${(cgData?.bnbPrice?.change || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatChange(cgData?.bnbPrice?.change)}</div>
+                </>}
+              </Card>
+            </div>
+            {/* Row 3: Fear & Greed, Total Market Cap */}
+            <div className="grid grid-cols-2 gap-3">
               <Card helpKey="fearGreed" onHelp={setHelpModal} theme={theme} isLive signalColor={(cgData?.fearGreed?.value || 50) < 30 ? 'positive' : (cgData?.fearGreed?.value || 50) > 70 ? 'negative' : 'warning'}>
                 <div className={`text-[10px] ${t.muted} mb-1`}>😱 Fear & Greed</div>
                 {loading ? <SkeletonLoader width="w-16" height="h-6" theme={theme} /> : <>
@@ -2116,19 +2188,14 @@ function App() {
                   <div className={`text-xs ${t.muted}`}>{cgData?.fearGreed?.text || '--'}</div>
                 </>}
               </Card>
+              <Card helpKey="totalMarketCap" onHelp={setHelpModal} theme={theme} isLive signalColor="neutral">
+                <div className={`text-[10px] ${t.muted} mb-1`}>🌍 Total Market Cap</div>
+                {loading ? <SkeletonLoader width="w-20" height="h-6" theme={theme} /> : <>
+                  <div className={`text-lg font-bold ${t.text}`}>${cgData?.totalMarketCap?.value || '--'}T</div>
+                  <div className={`text-xs ${t.muted}`}>Vol: ${cgData?.totalVolume?.value || '--'}B</div>
+                </>}
+              </Card>
             </div>
-            <Card helpKey="btcDominance" onHelp={setHelpModal} theme={theme} isLive signalColor={(cgData?.btcDominance?.value || 50) < 50 ? 'positive' : (cgData?.btcDominance?.value || 50) > 55 ? 'negative' : 'warning'}>
-              <div className="flex justify-between items-center">
-                <div>
-                  <div className={`text-[10px] ${t.muted} mb-1`}>👑 BTC Dominance</div>
-                  {loading ? <SkeletonLoader width="w-16" height="h-5" theme={theme} /> : <div className={`text-base font-bold ${t.text}`}>{cgData?.btcDominance?.value || '--'}%</div>}
-                </div>
-                <div className="text-right">
-                  <div className={`text-[10px] ${t.muted} mb-1`}>📊 Volume 24h</div>
-                  {loading ? <SkeletonLoader width="w-16" height="h-5" theme={theme} /> : <div className={`text-base font-bold ${t.text}`}>${cgData?.totalVolume?.value || '--'}B</div>}
-                </div>
-              </div>
-            </Card>
           </div>
         )}
 
@@ -2139,13 +2206,22 @@ function App() {
               <div className={`text-xs font-semibold mb-3 ${t.text}`}>🌊 Altseason Indicators</div>
               {loading ? <SkeletonLoader width="w-full" height="h-20" theme={theme} /> : (
                 <div className="grid grid-cols-2 gap-2">
-                  <div className={`p-2.5 ${t.bg} rounded-lg border-l-4 ${(altseasonData?.altseasonIndex || 0) > 50 ? 'border-l-green-500' : 'border-l-yellow-500'}`}>
+                  <div onClick={() => setHelpModal('altseasonIndex')} className={`p-2.5 ${t.bg} rounded-lg border-l-4 cursor-pointer hover:opacity-80 ${(altseasonData?.altseasonIndex || 0) > 60 ? 'border-l-green-500' : (altseasonData?.altseasonIndex || 0) < 40 ? 'border-l-red-500' : 'border-l-yellow-500'}`}>
                     <div className={`text-[9px] ${t.muted}`}>Altseason Index</div>
                     <div className={`text-xl font-bold ${(altseasonData?.altseasonIndex || 0) > 60 ? 'text-green-500' : (altseasonData?.altseasonIndex || 0) < 40 ? 'text-red-500' : 'text-yellow-500'}`}>{altseasonData?.altseasonIndex || '--'}</div>
                   </div>
-                  <div className={`p-2.5 ${t.bg} rounded-lg`}><div className={`text-[9px] ${t.muted}`}>ETH/BTC</div><div className={`text-xl font-bold ${t.text}`}>{altseasonData?.ethBtcRatio ? altseasonData.ethBtcRatio.toFixed(5) : '--'}</div></div>
-                  <div className={`p-2.5 ${t.bg} rounded-lg`}><div className={`text-[9px] ${t.muted}`}>Total2</div><div className={`text-xl font-bold ${t.text}`}>${altseasonData?.total2Cap ? altseasonData.total2Cap.toFixed(2) : '--'}T</div></div>
-                  <div className={`p-2.5 ${t.bg} rounded-lg`}><div className={`text-[9px] ${t.muted}`}>BTC Dom</div><div className={`text-xl font-bold ${t.text}`}>{altseasonData?.btcDominance ? altseasonData.btcDominance.toFixed(2) : '--'}%</div></div>
+                  <div onClick={() => setHelpModal('ethBtcRatio')} className={`p-2.5 ${t.bg} rounded-lg border-l-4 cursor-pointer hover:opacity-80 ${(altseasonData?.ethBtcRatio || 0) > 0.05 ? 'border-l-green-500' : (altseasonData?.ethBtcRatio || 0) < 0.035 ? 'border-l-red-500' : 'border-l-yellow-500'}`}>
+                    <div className={`text-[9px] ${t.muted}`}>ETH/BTC</div>
+                    <div className={`text-xl font-bold ${(altseasonData?.ethBtcRatio || 0) > 0.05 ? 'text-green-500' : (altseasonData?.ethBtcRatio || 0) < 0.035 ? 'text-red-500' : 'text-yellow-500'}`}>{altseasonData?.ethBtcRatio ? altseasonData.ethBtcRatio.toFixed(5) : '--'}</div>
+                  </div>
+                  <div onClick={() => setHelpModal('total2')} className={`p-2.5 ${t.bg} rounded-lg border-l-4 cursor-pointer hover:opacity-80 border-l-blue-500`}>
+                    <div className={`text-[9px] ${t.muted}`}>Total2</div>
+                    <div className={`text-xl font-bold text-blue-400`}>${altseasonData?.total2Cap ? altseasonData.total2Cap.toFixed(2) : '--'}T</div>
+                  </div>
+                  <div onClick={() => setHelpModal('btcDominance')} className={`p-2.5 ${t.bg} rounded-lg border-l-4 cursor-pointer hover:opacity-80 ${(altseasonData?.btcDominance || 50) > 55 ? 'border-l-red-500' : (altseasonData?.btcDominance || 50) < 45 ? 'border-l-green-500' : 'border-l-yellow-500'}`}>
+                    <div className={`text-[9px] ${t.muted}`}>BTC Dom</div>
+                    <div className={`text-xl font-bold ${(altseasonData?.btcDominance || 50) > 55 ? 'text-red-500' : (altseasonData?.btcDominance || 50) < 45 ? 'text-green-500' : 'text-yellow-500'}`}>{altseasonData?.btcDominance ? altseasonData.btcDominance.toFixed(2) : '--'}%</div>
+                  </div>
                 </div>
               )}
             </Card>
@@ -2154,11 +2230,11 @@ function App() {
               <div className={`text-xs font-semibold mb-3 ${t.text}`}>💵 Stablecoin Flows</div>
               {loading ? <SkeletonLoader width="w-full" height="h-16" theme={theme} /> : (
                 <div className="grid grid-cols-2 gap-2">
-                  <div className={`p-2.5 ${t.bg} rounded-lg`}>
+                  <div className={`p-2.5 ${t.bg} rounded-lg border-l-4 ${(altseasonData?.usdt?.change || 0) >= 0 ? 'border-l-green-500' : 'border-l-red-500'}`}>
                     <div className="flex justify-between items-center"><span className={`text-[9px] ${t.muted}`}>USDT</span><span className={`text-[9px] font-semibold ${(altseasonData?.usdt?.change || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>{altseasonData?.usdt?.change >= 0 ? '+' : ''}{altseasonData?.usdt?.change?.toFixed(2) || '--'}%</span></div>
                     <div className={`text-base font-bold ${t.text}`}>${altseasonData?.usdt?.mcap || '--'}B</div>
                   </div>
-                  <div className={`p-2.5 ${t.bg} rounded-lg`}>
+                  <div className={`p-2.5 ${t.bg} rounded-lg border-l-4 ${(altseasonData?.usdc?.change || 0) >= 0 ? 'border-l-green-500' : 'border-l-red-500'}`}>
                     <div className="flex justify-between items-center"><span className={`text-[9px] ${t.muted}`}>USDC</span><span className={`text-[9px] font-semibold ${(altseasonData?.usdc?.change || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>{altseasonData?.usdc?.change >= 0 ? '+' : ''}{altseasonData?.usdc?.change?.toFixed(2) || '--'}%</span></div>
                     <div className={`text-base font-bold ${t.text}`}>${altseasonData?.usdc?.mcap || '--'}B</div>
                   </div>
