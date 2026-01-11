@@ -1,120 +1,58 @@
+/* CRITICAL: These three lines MUST be here for Tailwind to work! */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Custom animations */
-@keyframes shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+/* Custom styles below */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-/* Custom component classes */
-@layer components {
-  /* Card styles */
-  .card-dark {
-    @apply bg-dark-card border border-dark-border rounded-xl p-3.5;
-  }
-  .card-light {
-    @apply bg-light-card border border-light-border rounded-xl p-3.5;
-  }
-  
-  /* Button styles */
-  .btn-primary {
-    @apply px-4 py-2.5 bg-accent text-white font-semibold rounded-lg hover:bg-accent-hover transition-colors;
-  }
-  .btn-secondary {
-    @apply px-4 py-2.5 bg-transparent border border-current rounded-lg font-semibold transition-colors;
-  }
-  
-  /* Input styles */
-  .input-dark {
-    @apply w-full px-3 py-2.5 bg-dark-bg border border-dark-border rounded-lg text-dark-text text-sm focus:outline-none focus:border-accent;
-  }
-  .input-light {
-    @apply w-full px-3 py-2.5 bg-light-bg border border-light-border rounded-lg text-light-text text-sm focus:outline-none focus:border-accent;
-  }
-  
-  /* Badge styles */
-  .badge {
-    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold;
-  }
-  .badge-live {
-    @apply bg-positive/20 text-positive;
-  }
-  .badge-error {
-    @apply bg-negative/20 text-negative;
-  }
-  .badge-warning {
-    @apply bg-warning/20 text-warning;
-  }
-  
-  /* Skeleton loader */
-  .skeleton {
-    @apply rounded bg-gradient-to-r from-dark-border via-dark-card to-dark-border bg-[length:200%_100%] animate-shimmer;
-  }
-  .skeleton-light {
-    @apply rounded bg-gradient-to-r from-light-border via-light-card to-light-border bg-[length:200%_100%] animate-shimmer;
-  }
-  
-  /* Live indicator dot */
-  .live-dot {
-    @apply w-1.5 h-1.5 rounded-full bg-positive animate-pulse;
-  }
-  
-  /* Signal colors */
-  .signal-bullish {
-    @apply border-l-4 border-l-positive bg-positive/5;
-  }
-  .signal-bearish {
-    @apply border-l-4 border-l-negative bg-negative/5;
-  }
-  .signal-neutral {
-    @apply border-l-4 border-l-warning bg-warning/5;
-  }
-}
-
-@layer utilities {
-  /* Text utilities */
-  .text-positive { @apply text-[#22c55e] dark:text-[#22c55e]; }
-  .text-negative { @apply text-[#ef4444] dark:text-[#ef4444]; }
-  .text-warning { @apply text-[#f59e0b] dark:text-[#f59e0b]; }
-  
-  /* Safe area for mobile */
-  .pb-safe {
-    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
-  }
-}
-
-/* Base styles */
 body {
-  @apply bg-dark-bg text-dark-text;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-body.light {
-  @apply bg-light-bg text-light-text;
-}
-
-/* Scrollbar styling */
+/* Custom scrollbar for dark mode */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-transparent;
+  background: #1e293b;
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-dark-border rounded-full;
+  background: #475569;
+  border-radius: 3px;
 }
 
-.light ::-webkit-scrollbar-thumb {
-  @apply bg-light-border;
+::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* Smooth transitions */
+* {
+  transition-property: background-color, border-color, color;
+  transition-duration: 150ms;
+  transition-timing-function: ease-in-out;
+}
+
+/* Prevent layout shift from scrollbar */
+html {
+  overflow-y: scroll;
+}
+
+/* Safe area insets for mobile */
+@supports (padding: max(0px)) {
+  body {
+    padding-left: max(0px, env(safe-area-inset-left));
+    padding-right: max(0px, env(safe-area-inset-right));
+  }
 }
