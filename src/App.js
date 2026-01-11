@@ -34,9 +34,9 @@ const loadAlertHistory = () => { try { const data = localStorage.getItem('crypto
 const fetchSpotBalance = async (apiKey, secretKey) => {
   try {
     const timestamp = Date.now();
-    const queryString = \`timestamp=\${timestamp}\`;
+    const queryString = `timestamp=${timestamp}`;
     const signature = await generateSignature(queryString, secretKey);
-    const response = await fetch(\`https://api.binance.com/api/v3/account?\${queryString}&signature=\${signature}\`, { headers: { 'X-MBX-APIKEY': apiKey } });
+    const response = await fetch(`https://api.binance.com/api/v3/account?${queryString}&signature=${signature}`, { headers: { 'X-MBX-APIKEY': apiKey } });
     if (!response.ok) { const error = await response.json(); throw new Error(error.msg || 'API Error'); }
     const data = await response.json();
     const balances = data.balances.filter(b => parseFloat(b.free) > 0 || parseFloat(b.locked) > 0)
@@ -49,9 +49,9 @@ const fetchSpotBalance = async (apiKey, secretKey) => {
 const fetchFuturesBalance = async (apiKey, secretKey) => {
   try {
     const timestamp = Date.now();
-    const queryString = \`timestamp=\${timestamp}\`;
+    const queryString = `timestamp=${timestamp}`;
     const signature = await generateSignature(queryString, secretKey);
-    const response = await fetch(\`https://fapi.binance.com/fapi/v2/balance?\${queryString}&signature=\${signature}\`, { headers: { 'X-MBX-APIKEY': apiKey } });
+    const response = await fetch(`https://fapi.binance.com/fapi/v2/balance?${queryString}&signature=${signature}`, { headers: { 'X-MBX-APIKEY': apiKey } });
     if (!response.ok) { const error = await response.json(); throw new Error(error.msg || 'API Error'); }
     const data = await response.json();
     const balances = data.filter(b => parseFloat(b.balance) > 0 || parseFloat(b.crossUnPnl) !== 0)
@@ -63,9 +63,9 @@ const fetchFuturesBalance = async (apiKey, secretKey) => {
 const fetchFuturesPositions = async (apiKey, secretKey) => {
   try {
     const timestamp = Date.now();
-    const queryString = \`timestamp=\${timestamp}\`;
+    const queryString = `timestamp=${timestamp}`;
     const signature = await generateSignature(queryString, secretKey);
-    const response = await fetch(\`https://fapi.binance.com/fapi/v2/positionRisk?\${queryString}&signature=\${signature}\`, { headers: { 'X-MBX-APIKEY': apiKey } });
+    const response = await fetch(`https://fapi.binance.com/fapi/v2/positionRisk?${queryString}&signature=${signature}`, { headers: { 'X-MBX-APIKEY': apiKey } });
     if (!response.ok) { const error = await response.json(); throw new Error(error.msg || 'API Error'); }
     const data = await response.json();
     const positions = data.filter(p => parseFloat(p.positionAmt) !== 0).map(p => ({
@@ -82,11 +82,11 @@ const fetchFuturesPositions = async (apiKey, secretKey) => {
 const fetchOpenOrders = async (apiKey, secretKey) => {
   try {
     const timestamp = Date.now();
-    const queryString = \`timestamp=\${timestamp}\`;
+    const queryString = `timestamp=${timestamp}`;
     const signature = await generateSignature(queryString, secretKey);
     const [spotRes, futuresRes] = await Promise.all([
-      fetch(\`https://api.binance.com/api/v3/openOrders?\${queryString}&signature=\${signature}\`, { headers: { 'X-MBX-APIKEY': apiKey } }),
-      fetch(\`https://fapi.binance.com/fapi/v1/openOrders?\${queryString}&signature=\${signature}\`, { headers: { 'X-MBX-APIKEY': apiKey } })
+      fetch(`https://api.binance.com/api/v3/openOrders?${queryString}&signature=${signature}`, { headers: { 'X-MBX-APIKEY': apiKey } }),
+      fetch(`https://fapi.binance.com/fapi/v1/openOrders?${queryString}&signature=${signature}`, { headers: { 'X-MBX-APIKEY': apiKey } })
     ]);
     const spotOrders = spotRes.ok ? (await spotRes.json()).map(o => ({ ...o, market: 'SPOT' })) : [];
     const futuresOrders = futuresRes.ok ? (await futuresRes.json()).map(o => ({ ...o, market: 'FUTURES' })) : [];
@@ -97,10 +97,10 @@ const fetchOpenOrders = async (apiKey, secretKey) => {
 const placeOrder = async (apiKey, secretKey, params, market = 'SPOT') => {
   try {
     const timestamp = Date.now();
-    const queryString = \`\${new URLSearchParams({ ...params, timestamp }).toString()}\`;
+    const queryString = `${new URLSearchParams({ ...params, timestamp }).toString()}`;
     const signature = await generateSignature(queryString, secretKey);
     const baseUrl = market === 'SPOT' ? 'https://api.binance.com/api/v3/order' : 'https://fapi.binance.com/fapi/v1/order';
-    const response = await fetch(\`\${baseUrl}?\${queryString}&signature=\${signature}\`, { method: 'POST', headers: { 'X-MBX-APIKEY': apiKey } });
+    const response = await fetch(`${baseUrl}?${queryString}&signature=${signature}`, { method: 'POST', headers: { 'X-MBX-APIKEY': apiKey } });
     const data = await response.json();
     if (!response.ok) throw new Error(data.msg || 'Order failed');
     return { success: true, order: data };
@@ -110,10 +110,10 @@ const placeOrder = async (apiKey, secretKey, params, market = 'SPOT') => {
 const cancelOrder = async (apiKey, secretKey, symbol, orderId, market = 'SPOT') => {
   try {
     const timestamp = Date.now();
-    const queryString = \`symbol=\${symbol}&orderId=\${orderId}&timestamp=\${timestamp}\`;
+    const queryString = `symbol=${symbol}&orderId=${orderId}&timestamp=${timestamp}`;
     const signature = await generateSignature(queryString, secretKey);
     const baseUrl = market === 'SPOT' ? 'https://api.binance.com/api/v3/order' : 'https://fapi.binance.com/fapi/v1/order';
-    const response = await fetch(\`\${baseUrl}?\${queryString}&signature=\${signature}\`, { method: 'DELETE', headers: { 'X-MBX-APIKEY': apiKey } });
+    const response = await fetch(`${baseUrl}?${queryString}&signature=${signature}`, { method: 'DELETE', headers: { 'X-MBX-APIKEY': apiKey } });
     if (!response.ok) { const error = await response.json(); throw new Error(error.msg || 'Cancel failed'); }
     return { success: true };
   } catch (error) { return { success: false, error: error.message }; }
@@ -126,6 +126,126 @@ const closePosition = async (apiKey, secretKey, symbol, positionAmt) => {
 };
 
 
+
+// ============== HELP CONTENT ==============
+const helpContent = {
+  dayTradingScore: {
+    title: 'Day Trading Score',
+    emoji: '🎯',
+    description: 'Wskaźnik do krótkoterminowego tradingu (godziny-dni). Wykorzystuje agresywne progi i skupia się na momentum rynkowym.',
+    interpretation: [
+      { condition: '80-100', signal: 'bullish', text: '🟢 AKUMULUJ - Silne warunki do kupna' },
+      { condition: '65-79', signal: 'bullish', text: '🟢 HOLD+ - Dobre warunki, trzymaj pozycje' },
+      { condition: '50-64', signal: 'neutral', text: '🟡 HOLD - Neutralne, obserwuj rynek' },
+      { condition: '35-49', signal: 'bearish', text: '🟠 OSTROŻNIE - Słabe warunki' },
+      { condition: '0-34', signal: 'bearish', text: '🔴 REDUKUJ - Rozważ zamknięcie pozycji' }
+    ],
+    tip: 'Łącz z analizą Funding Rate i Fear & Greed dla lepszych wyników.',
+    source: 'Algorytm wewnętrzny'
+  },
+  swingScore: {
+    title: 'Swing Trading Score',
+    emoji: '📊',
+    description: 'Wskaźnik do średnioterminowego tradingu (tygodnie). Bazuje na trendach TVL, dominacji BTC i napływach stablecoinów.',
+    interpretation: [
+      { condition: '70-100', signal: 'bullish', text: '🟢 AKUMULUJ - Trend wzrostowy' },
+      { condition: '55-69', signal: 'bullish', text: '🟢 HOLD+ - Pozytywne sygnały' },
+      { condition: '45-54', signal: 'neutral', text: '🟡 HOLD - Boczny trend' },
+      { condition: '30-44', signal: 'bearish', text: '🟠 OSTROŻNIE - Słabnący trend' },
+      { condition: '0-29', signal: 'bearish', text: '🔴 REDUKUJ - Trend spadkowy' }
+    ],
+    tip: 'Obserwuj Altseason Index i ETH/BTC ratio dla potwierdzenia sygnałów.',
+    source: 'Algorytm wewnętrzny'
+  },
+  hodlScore: {
+    title: 'HODL Score',
+    emoji: '🏦',
+    description: 'Wskaźnik do długoterminowego inwestowania (miesiące-lata). Wykorzystuje konserwatywne progi oparte na makro i fundamentach.',
+    interpretation: [
+      { condition: '60-100', signal: 'bullish', text: '🟢 AKUMULUJ - Świetny czas na DCA' },
+      { condition: '50-59', signal: 'bullish', text: '🟢 HOLD+ - Dobre warunki makro' },
+      { condition: '40-49', signal: 'neutral', text: '🟡 HOLD - Stabilne, obserwuj' },
+      { condition: '25-39', signal: 'bearish', text: '🟠 OSTROŻNIE - Niepewność makro' },
+      { condition: '0-24', signal: 'bearish', text: '🔴 REDUKUJ - Rozważ zabezpieczenie' }
+    ],
+    tip: 'Najlepszy moment na kupno gdy Fear & Greed < 25 i M2 rośnie.',
+    source: 'Algorytm wewnętrzny'
+  },
+  ethBtcHistory: {
+    title: 'ETH/BTC Historia',
+    emoji: '📈',
+    description: 'Wykres historyczny stosunku ceny ETH do BTC. Rosnący trend wskazuje na outperformance Ethereum względem Bitcoina.',
+    interpretation: [
+      { condition: '> 0.055', signal: 'bullish', text: '🟢 Altcoin Season - ETH dominuje' },
+      { condition: '0.045 - 0.055', signal: 'neutral', text: '🟡 Równowaga - Normalne warunki' },
+      { condition: '< 0.035', signal: 'bearish', text: '🔴 BTC Season - Bitcoin dominuje' }
+    ],
+    tip: 'Wysoki ETH/BTC często poprzedza altseason. Obserwuj wybicia powyżej 0.05.',
+    source: 'CoinGecko API'
+  },
+  positionCalculator: {
+    title: 'Kalkulator Pozycji',
+    emoji: '🧮',
+    description: 'Narzędzie do obliczania wielkości pozycji na podstawie kapitału, ryzyka i Stop Loss. Pomaga zarządzać ryzykiem.',
+    interpretation: [
+      { condition: 'Ryzyko 1%', signal: 'bullish', text: '🟢 Konserwatywne - zalecane dla początkujących' },
+      { condition: 'Ryzyko 2%', signal: 'neutral', text: '🟡 Umiarkowane - standardowe' },
+      { condition: 'Ryzyko 3%+', signal: 'bearish', text: '🔴 Agresywne - tylko dla doświadczonych' }
+    ],
+    tip: 'Nigdy nie ryzykuj więcej niż 1-2% kapitału na pojedynczą transakcję.',
+    source: 'Formuła Risk Management'
+  },
+  btcPrice: {
+    title: 'Cena Bitcoin',
+    emoji: '₿',
+    description: 'Aktualna cena Bitcoina w USD wraz ze zmianą 24h. BTC jest głównym wskaźnikiem kondycji całego rynku crypto.',
+    interpretation: [
+      { condition: '> +5% 24h', signal: 'bullish', text: '🟢 Silny wzrost - momentum bycze' },
+      { condition: '-2% do +2%', signal: 'neutral', text: '🟡 Stabilny - konsolidacja' },
+      { condition: '< -5% 24h', signal: 'bearish', text: '🔴 Silny spadek - momentum niedźwiedzie' }
+    ],
+    tip: 'Obserwuj reakcję altcoinów na ruchy BTC - słaba reakcja może oznaczać zmianę trendu.',
+    source: 'CoinGecko API'
+  },
+  fearGreed: {
+    title: 'Fear & Greed Index',
+    emoji: '😱',
+    description: 'Wskaźnik sentymentu rynkowego (0-100). Extreme Fear często oznacza okazję kupna, Extreme Greed - ostrożność.',
+    interpretation: [
+      { condition: '0-25', signal: 'bullish', text: '🟢 Extreme Fear - potencjalna okazja' },
+      { condition: '25-45', signal: 'neutral', text: '🟡 Fear - ostrożny optymizm' },
+      { condition: '45-55', signal: 'neutral', text: '🟡 Neutral - brak wyraźnego sygnału' },
+      { condition: '55-75', signal: 'bearish', text: '🟠 Greed - rozważ realizację zysków' },
+      { condition: '75-100', signal: 'bearish', text: '🔴 Extreme Greed - wysokie ryzyko korekty' }
+    ],
+    tip: 'Kupuj gdy inni się boją, sprzedawaj gdy są chciwi - Warren Buffett.',
+    source: 'Alternative.me'
+  },
+  fundingRate: {
+    title: 'Funding Rate',
+    emoji: '💰',
+    description: 'Opłata między long/short na futures. Dodatni = longi płacą shortom (rynek przegrzany), ujemny = odwrotnie.',
+    interpretation: [
+      { condition: '< -0.01%', signal: 'bullish', text: '🟢 Bardzo ujemny - shorts dominują, potencjalne squeeze' },
+      { condition: '-0.01% do 0.01%', signal: 'neutral', text: '🟡 Neutralny - zrównoważony rynek' },
+      { condition: '> 0.03%', signal: 'bearish', text: '🔴 Wysoki - rynek przegrzany, ryzyko korekty' }
+    ],
+    tip: 'Ekstremalnie wysoki funding często poprzedza gwałtowne spadki.',
+    source: 'Binance Futures API'
+  },
+  tvl: {
+    title: 'Total Value Locked',
+    emoji: '🔒',
+    description: 'Całkowita wartość zablokowana w protokołach DeFi. Rosnący TVL = większe zaufanie i adopcja.',
+    interpretation: [
+      { condition: '> +5% 7d', signal: 'bullish', text: '🟢 Silny wzrost - kapitał napływa do DeFi' },
+      { condition: '-2% do +2% 7d', signal: 'neutral', text: '🟡 Stabilny - normalne warunki' },
+      { condition: '< -5% 7d', signal: 'bearish', text: '🔴 Spadek - kapitał ucieka z DeFi' }
+    ],
+    tip: 'Porównuj TVL z ceną ETH - rozbieżność może sygnalizować zmianę trendu.',
+    source: 'DefiLlama API'
+  }
+};
 
 // ============== UI COMPONENTS WITH TAILWIND ==============
 const HelpModal = ({ helpKey, onClose, theme }) => {
@@ -199,12 +319,12 @@ const AIInsight = ({ cgData, binanceData, altseasonData, dayScore, swingScore, h
   const funding = binanceData?.fundingRate?.value || 0;
   const btcChange = cgData?.btcPrice?.change || 0;
   const altIndex = altseasonData?.altseasonIndex || 50;
-  if (fg < 25 && funding < 0) { insight = \`Extreme Fear (\${fg}) + ujemny Funding = potencjalne dno.\`; signal = 'bullish'; emoji = '🟢'; }
-  else if (fg > 75 && funding > 0.03) { insight = \`Extreme Greed (\${fg}) + wysoki Funding = rynek przegrzany.\`; signal = 'bearish'; emoji = '🔴'; }
-  else if (altIndex > 60) { insight = \`Altseason Index (\${altIndex}) wysoki = rotacja do altów.\`; signal = 'bullish'; emoji = '🚀'; }
-  else if (btcChange > 5) { insight = \`BTC +\${btcChange.toFixed(1)}% = silne momentum.\`; signal = 'bullish'; emoji = '📈'; }
-  else if (btcChange < -5) { insight = \`BTC \${btcChange.toFixed(1)}% = korekta.\`; signal = 'bearish'; emoji = '📉'; }
-  else { const avg = Math.round((dayScore + swingScore + hodlScore) / 3); insight = \`Mieszane sygnały (avg: \${avg}). Obserwuj.\`; }
+  if (fg < 25 && funding < 0) { insight = `Extreme Fear (${fg}) + ujemny Funding = potencjalne dno.`; signal = 'bullish'; emoji = '🟢'; }
+  else if (fg > 75 && funding > 0.03) { insight = `Extreme Greed (${fg}) + wysoki Funding = rynek przegrzany.`; signal = 'bearish'; emoji = '🔴'; }
+  else if (altIndex > 60) { insight = `Altseason Index (${altIndex}) wysoki = rotacja do altów.`; signal = 'bullish'; emoji = '🚀'; }
+  else if (btcChange > 5) { insight = `BTC +${btcChange.toFixed(1)}% = silne momentum.`; signal = 'bullish'; emoji = '📈'; }
+  else if (btcChange < -5) { insight = `BTC ${btcChange.toFixed(1)}% = korekta.`; signal = 'bearish'; emoji = '📉'; }
+  else { const avg = Math.round((dayScore + swingScore + hodlScore) / 3); insight = `Mieszane sygnały (avg: ${avg}). Obserwuj.`; }
   const signalClass = signal === 'bullish' ? 'bg-green-500/15 border-l-green-500' : signal === 'bearish' ? 'bg-red-500/15 border-l-red-500' : 'bg-yellow-500/15 border-l-yellow-500';
   return (
     <div className={`p-2.5 ${signalClass} border-l-4 rounded-r-lg mx-3 mb-2.5`}>
@@ -232,10 +352,10 @@ const MiniScoreGauge = ({ score, label, icon, subtitle, onHelp, theme }) => {
         <button onClick={onHelp} className={`w-4 h-4 rounded-full ${t.isDark ? 'bg-white/10' : 'bg-black/10'} border-none ${t.muted} text-[9px] cursor-pointer flex items-center justify-center`}>?</button>
       </div>
       <svg viewBox="0 0 100 52" className="w-full max-w-[90px] h-[46px]">
-        <defs><linearGradient id={\`gauge-\${label}\`} x1="0%" y1="0%" x2="100%" y2="0%">{gaugeColors.map((c, i) => <stop key={i} offset={\`\${i * 25}%\`} stopColor={c} />)}</linearGradient></defs>
+        <defs><linearGradient id={`gauge-${label}`} x1="0%" y1="0%" x2="100%" y2="0%">{gaugeColors.map((c, i) => <stop key={i} offset={`${i * 25}%`} stopColor={c} />)}</linearGradient></defs>
         <path d="M 10 48 A 40 40 0 0 1 90 48" fill="none" stroke={t.isDark ? '#334155' : '#e2e8f0'} strokeWidth="7" strokeLinecap="round" />
-        <path d="M 10 48 A 40 40 0 0 1 90 48" fill="none" stroke={\`url(#gauge-\${label})\`} strokeWidth="7" strokeLinecap="round" strokeDasharray={\`\${(score / 100) * 126} 126\`} />
-        <g transform={\`rotate(\${needleAngle} 50 48)\`}><line x1="50" y1="48" x2="50" y2="18" stroke={signal.color} strokeWidth="2.5" strokeLinecap="round" /><circle cx="50" cy="48" r="4" fill={signal.color} /></g>
+        <path d="M 10 48 A 40 40 0 0 1 90 48" fill="none" stroke={`url(#gauge-${label})`} strokeWidth="7" strokeLinecap="round" strokeDasharray={`${(score / 100) * 126} 126`} />
+        <g transform={`rotate(${needleAngle} 50 48)`}><line x1="50" y1="48" x2="50" y2="18" stroke={signal.color} strokeWidth="2.5" strokeLinecap="round" /><circle cx="50" cy="48" r="4" fill={signal.color} /></g>
         <text x="50" y="42" textAnchor="middle" className="text-lg font-bold" fill={signal.color}>{score}</text>
       </svg>
       <div className="text-center -mt-1">
@@ -274,7 +394,7 @@ const PositionCalculator = ({ theme, onHelp }) => {
         <div><label className={`text-[9px] ${t.muted}`}>Stop Loss ($)</label><input type="number" value={stopLoss} onChange={e => setStopLoss(e.target.value)} className={`w-full px-2 py-2 rounded-lg border ${t.input} text-xs mt-1`} placeholder="93000" /></div>
       </div>
       <div className="mb-2.5"><label className={`text-[9px] ${t.muted}`}>Dźwignia</label>
-        <div className="flex gap-1 mt-1">{['1', '2', '3', '5', '10', '20'].map(l => (<button key={l} onClick={() => setLeverage(l)} className={`flex-1 py-1.5 rounded-md border-2 text-[10px] font-semibold cursor-pointer ${leverage === l ? 'border-blue-500 bg-blue-500/20 text-blue-500' : \`border-transparent \${t.card} \${t.muted}\`}\`}>{l}x</button>))}</div>
+        <div className="flex gap-1 mt-1">{['1', '2', '3', '5', '10', '20'].map(l => (<button key={l} onClick={() => setLeverage(l)} className={`flex-1 py-1.5 rounded-md border-2 text-[10px] font-semibold cursor-pointer ${leverage === l ? 'border-blue-500 bg-blue-500/20 text-blue-500' : `border-transparent ${t.card} ${t.muted}`}`}>{l}x</button>))}</div>
       </div>
       <div className={`${t.bg} rounded-lg p-2.5`}>
         <div className="grid grid-cols-2 gap-2 text-[10px]">
@@ -569,6 +689,41 @@ const fetchComparisonData = async (coinIds) => {
     }));
   } catch (error) {
     console.error('Comparison fetch error:', error);
+    return null;
+  }
+};
+
+// ============== ETH/BTC HISTORY ==============
+const fetchEthBtcHistory = async (days = 30) => {
+  try {
+    const response = await fetch(`https://api.coingecko.com/api/v3/coins/ethereum/market_chart?vs_currency=btc&days=${days}&interval=daily`);
+    if (!response.ok) throw new Error('API Error');
+    const data = await response.json();
+    
+    if (!data.prices || data.prices.length === 0) return null;
+    
+    const prices = data.prices.map(([timestamp, value]) => ({
+      date: new Date(timestamp).toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit' }),
+      value: value,
+      timestamp
+    }));
+    
+    const firstPrice = prices[0]?.value || 0;
+    const lastPrice = prices[prices.length - 1]?.value || 0;
+    const change = firstPrice > 0 ? ((lastPrice - firstPrice) / firstPrice * 100) : 0;
+    const minValue = Math.min(...prices.map(p => p.value));
+    const maxValue = Math.max(...prices.map(p => p.value));
+    
+    return {
+      prices,
+      change: change.toFixed(2),
+      current: lastPrice.toFixed(5),
+      min: minValue.toFixed(5),
+      max: maxValue.toFixed(5),
+      days
+    };
+  } catch (error) {
+    console.error('ETH/BTC history fetch error:', error);
     return null;
   }
 };
@@ -1347,7 +1502,7 @@ function App() {
       const triggered = (alert.condition === 'below' && currentValue < alert.value) || (alert.condition === 'above' && currentValue > alert.value);
       if (triggered) {
         setActiveToast(alert);
-        if (notificationsEnabled && 'Notification' in window) new Notification(\`🔔 \${alert.name}\`, { body: \`\${alert.condition === 'below' ? 'Poniżej' : 'Powyżej'} \${alert.value}\` });
+        if (notificationsEnabled && 'Notification' in window) new Notification(`🔔 ${alert.name}`, { body: `${alert.condition === 'below' ? 'Poniżej' : 'Powyżej'} ${alert.value}` });
         const updated = alerts.map(a => a.id === alert.id ? { ...a, triggered: true } : a);
         setAlerts(updated); saveAlerts(updated);
       }
@@ -1389,32 +1544,32 @@ function App() {
   const handleClosePosition = async (symbol, positionAmt) => { const result = await closePosition(portfolioApiKey, portfolioSecretKey, symbol, positionAmt); if (result.success) refreshPortfolio(); };
 
   const tabs = [{ id: 'crypto', label: '₿ Crypto' }, { id: 'structure', label: '📊 Structure' }, { id: 'pulse', label: '⚡ Pulse' }, { id: 'compare', label: '⚖️ Compare' }, { id: 'macro', label: '🏦 Macro' }, { id: 'defi', label: '🦙 DeFi' }, { id: 'derivatives', label: '📊 Deriv' }, { id: 'charts', label: '📈 Charts' }, { id: 'portfolio', label: '💼 Portfolio' }];
-  const formatPrice = (p) => { if (!p) return '$--'; if (p >= 1000) return \`$\${p.toLocaleString('en-US', { maximumFractionDigits: 0 })}\`; return \`$\${p.toFixed(2)}\`; };
-  const formatChange = (c) => { if (c === undefined) return '--'; return c >= 0 ? \`+\${c.toFixed(1)}%\` : \`\${c.toFixed(1)}%\`; };
+  const formatPrice = (p) => { if (!p) return '$--'; if (p >= 1000) return `$${p.toLocaleString('en-US', { maximumFractionDigits: 0 })}`; return `$${p.toFixed(2)}`; };
+  const formatChange = (c) => { if (c === undefined) return '--'; return c >= 0 ? `+${c.toFixed(1)}%` : `${c.toFixed(1)}%`; };
 
   return (
-    <div className={\`min-h-screen \${t.bg} \${t.text} pb-20\`}>
+    <div className={`min-h-screen ${t.bg} ${t.text} pb-20`}>
       {/* Header */}
-      <div className={\`\${t.card} border-b \${t.border} px-4 py-3 sticky top-0 z-50\`}>
+      <div className={`${t.card} border-b ${t.border} px-4 py-3 sticky top-0 z-50`}>
         <div className="flex justify-between items-center mb-2">
           <div className="flex items-center gap-2">
             <span className="text-xl">📊</span>
-            <h1 className={\`text-base font-bold \${t.text} m-0\`}>Crypto Decision Hub</h1>
+            <h1 className={`text-base font-bold ${t.text} m-0`}>Crypto Decision Hub</h1>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => { const sections = generateMarketReportPDFContent(cgData, binanceData, defiData, altseasonData, dayScore, swingScore, hodlScore, theme); exportToPDF('Market Report', sections, theme); }} className={\`p-2 rounded-lg \${t.bg} border \${t.border} cursor-pointer text-base\`} title="Export Market Report">📑</button>
-            <button onClick={() => setShowAlertPanel(true)} className={\`relative p-2 rounded-lg \${t.bg} border \${t.border} cursor-pointer\`}>
+            <button onClick={() => { const sections = generateMarketReportPDFContent(cgData, binanceData, defiData, altseasonData, dayScore, swingScore, hodlScore, theme); exportToPDF('Market Report', sections, theme); }} className={`p-2 rounded-lg ${t.bg} border ${t.border} cursor-pointer text-base`} title="Export Market Report">📑</button>
+            <button onClick={() => setShowAlertPanel(true)} className={`relative p-2 rounded-lg ${t.bg} border ${t.border} cursor-pointer`}>
               <span className="text-base">🔔</span>
               {alerts.length > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-blue-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">{alerts.length}</span>}
             </button>
-            <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className={\`p-2 rounded-lg \${t.bg} border \${t.border} cursor-pointer text-base\`}>{theme === 'dark' ? '☀️' : '🌙'}</button>
+            <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className={`p-2 rounded-lg ${t.bg} border ${t.border} cursor-pointer text-base`}>{theme === 'dark' ? '☀️' : '🌙'}</button>
           </div>
         </div>
         <DataSourcesBadge apiStatus={apiStatus} theme={theme} />
       </div>
 
       {/* Score Gauges */}
-      <div className={\`flex justify-between gap-2 px-3 py-3 \${t.card} border-b \${t.border}\`}>
+      <div className={`flex justify-between gap-2 px-3 py-3 ${t.card} border-b ${t.border}`}>
         <MiniScoreGauge score={dayScore} label="Day" icon="🎯" subtitle="godziny-dni" onHelp={() => setHelpModal('dayTradingScore')} theme={theme} />
         <MiniScoreGauge score={swingScore} label="Swing" icon="📊" subtitle="dni-tygodnie" onHelp={() => setHelpModal('swingScore')} theme={theme} />
         <MiniScoreGauge score={hodlScore} label="HODL" icon="🏦" subtitle="tygodnie-mce" onHelp={() => setHelpModal('hodlScore')} theme={theme} />
