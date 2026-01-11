@@ -867,33 +867,119 @@ const DataSourcesBadge = ({ apiStatus, theme }) => {
   );
 };
 
-const AIInsight = ({ cgData, binanceData, altseasonData, dayScore, swingScore, hodlScore, theme }) => {
+const AIInsight = ({ cgData, binanceData, altseasonData, defiData, dayScore, swingScore, hodlScore, theme }) => {
   const t = useTheme(theme);
-  let insight = '', signal = 'neutral', emoji = '🤔';
+  
+  // Extract all metrics with correct paths
   const fg = cgData?.fearGreed?.value || 50;
   const funding = binanceData?.fundingRate?.value || 0;
   const btcChange = cgData?.btcPrice?.change || 0;
+  const ethChange = cgData?.ethPrice?.change || 0;
+  const btcDom = cgData?.btcDominance?.value || 50;
   const altIndex = altseasonData?.altseasonIndex || 50;
-  const avg = Math.round((dayScore + swingScore + hodlScore) / 3);
+  const ethBtc = altseasonData?.ethBtcRatio || 0;
+  const tvlChange = defiData?.tvl?.change || 0;
+  const usdtChange = defiData?.stablecoins?.usdtChange || 0;
+  const usdcChange = defiData?.stablecoins?.usdcChange || 0;
+  const stableChange = (usdtChange + usdcChange) / 2; // średnia zmiana
+  const avgScore = Math.round((dayScore + swingScore + hodlScore) / 3);
   
-  if (fg < 25 && funding < 0) { insight = `Extreme Fear (${fg}) + ujemny Funding = potencjalne dno.`; signal = 'bullish'; emoji = '🟢'; }
-  else if (fg > 75 && funding > 0.03) { insight = `Extreme Greed (${fg}) + wysoki Funding = rynek przegrzany.`; signal = 'bearish'; emoji = '🔴'; }
-  else if (altIndex > 60) { insight = `Altseason Index (${altIndex}) wysoki = rotacja do altów.`; signal = 'bullish'; emoji = '🚀'; }
-  else if (btcChange > 5) { insight = `BTC +${btcChange.toFixed(1)}% = silne momentum.`; signal = 'bullish'; emoji = '📈'; }
-  else if (btcChange < -5) { insight = `BTC ${btcChange.toFixed(1)}% = korekta.`; signal = 'bearish'; emoji = '📉'; }
-  else if (avg >= 60) { insight = `Score'y pozytywne (D:${dayScore}/S:${swingScore}/H:${hodlScore}) = korzystne warunki.`; signal = 'bullish'; emoji = '✅'; }
-  else if (avg <= 35) { insight = `Score'y niskie (D:${dayScore}/S:${swingScore}/H:${hodlScore}) = ostrożność wskazana.`; signal = 'bearish'; emoji = '⚠️'; }
-  else { insight = `Neutralne warunki. F&G: ${fg}, Score avg: ${avg}. Czekaj na wyraźny sygnał.`; }
+  // Build multi-part insight
+  const insights = [];
+  let signal = 'neutral';
+  let emoji = '🤔';
+  let headline = '';
+  
+  // 1. PRIMARY SIGNAL (headline based on F&G)
+  if (fg < 20) {
+    headline = `Ekstremalny strach (F&G: ${fg})`;
+    signal = 'bullish'; emoji = '🟢';
+    insights.push('Historycznie strefa akumulacji dla długoterminowych.');
+  } else if (fg < 30) {
+    headline = `Strach na rynku (F&G: ${fg})`;
+    signal = 'bullish'; emoji = '🟡';
+    insights.push('Sentyment pesymistyczny - potencjalne okazje.');
+  } else if (fg > 80) {
+    headline = `Ekstremalna chciwość (F&G: ${fg})`;
+    signal = 'bearish'; emoji = '🔴';
+    insights.push('Strefa dystrybucji. Rozważ zabezpieczenie pozycji.');
+  } else if (fg > 70) {
+    headline = `Chciwość dominuje (F&G: ${fg})`;
+    signal = 'bearish'; emoji = '🟠';
+    insights.push('Rynek optymistyczny - zachowaj ostrożność.');
+  } else {
+    headline = `Neutralny sentyment (F&G: ${fg})`;
+    insights.push('Rynek w równowadze między strachem a chciwością.');
+  }
+  
+  // 2. DERIVATIVES CONTEXT
+  if (funding < -0.01) {
+    insights.push(`Ujemny funding (${(funding * 100).toFixed(3)}%) = short squeeze potential.`);
+    if (signal === 'neutral') signal = 'bullish';
+  } else if (funding > 0.05) {
+    insights.push(`Wysoki funding (${(funding * 100).toFixed(3)}%) = overleveraged longs.`);
+    if (signal === 'neutral') signal = 'bearish';
+  }
+  
+  // 3. MOMENTUM
+  if (btcChange > 5) {
+    insights.push(`BTC +${btcChange.toFixed(1)}% (24h) - silne momentum wzrostowe.`);
+  } else if (btcChange < -5) {
+    insights.push(`BTC ${btcChange.toFixed(1)}% (24h) - korekta w toku.`);
+  }
+  
+  // 4. ALTSEASON CONTEXT
+  if (altIndex > 70 && ethBtc > 0.04) {
+    insights.push(`Altseason Index ${altIndex} + ETH/BTC silne = rotacja do altów.`);
+  } else if (altIndex < 30) {
+    insights.push(`Altseason Index ${altIndex} - BTC dominuje, alty słabsze.`);
+  }
+  
+  // 5. LIQUIDITY FLOW
+  if (stableChange > 2) {
+    insights.push(`Napływ stablecoinów +${stableChange.toFixed(1)}% - świeża płynność.`);
+  } else if (stableChange < -2) {
+    insights.push(`Odpływ stablecoinów ${stableChange.toFixed(1)}% - kapitał wychodzi.`);
+  }
+  
+  // 6. TVL HEALTH
+  if (tvlChange > 5) {
+    insights.push(`TVL DeFi +${tvlChange.toFixed(1)}% (7d) - zdrowy wzrost adopcji.`);
+  } else if (tvlChange < -5) {
+    insights.push(`TVL DeFi ${tvlChange.toFixed(1)}% (7d) - odpływ z protokołów.`);
+  }
+  
+  // 7. SCORE SUMMARY (always add)
+  if (dayScore >= 65 && swingScore >= 55 && hodlScore >= 50) {
+    insights.push(`Wszystkie score'y pozytywne (avg: ${avgScore}) - sygnały zbieżne.`);
+  } else if (dayScore <= 35 || swingScore <= 30 || hodlScore <= 25) {
+    insights.push(`Uwaga: score w strefie ryzyka (D:${dayScore}/S:${swingScore}/H:${hodlScore}).`);
+  } else {
+    insights.push(`Score'y mieszane (avg: ${avgScore}) - brak jednoznacznego kierunku.`);
+  }
+  
+  // Limit to 3-4 most important insights
+  const finalInsights = insights.slice(0, 4);
   
   const bgClass = signal === 'bullish' ? 'bg-green-500/15 border-l-green-500' : signal === 'bearish' ? 'bg-red-500/15 border-l-red-500' : 'bg-yellow-500/15 border-l-yellow-500';
+  const headlineColor = signal === 'bullish' ? 'text-green-400' : signal === 'bearish' ? 'text-red-400' : 'text-yellow-400';
+  
   return (
     <div className="px-3 mt-3 mb-3">
       <div className={`p-3 ${bgClass} border-l-4 rounded-lg`}>
         <div className="flex items-start gap-2.5">
-          <span className="text-xl">{emoji}</span>
+          <span className="text-xl flex-shrink-0">{emoji}</span>
           <div className="min-w-0 flex-1">
-            <div className={`text-[10px] ${t.text} opacity-70 mb-0.5`}>🤖 AI INSIGHT</div>
-            <div className={`text-xs ${t.text} leading-relaxed`}>{insight}</div>
+            <div className={`text-[10px] ${t.text} opacity-70 mb-1`}>🤖 AI MARKET INSIGHT</div>
+            <div className={`text-sm font-semibold ${headlineColor} mb-1.5`}>{headline}</div>
+            <ul className={`text-[11px] ${t.text} opacity-90 leading-relaxed space-y-0.5`}>
+              {finalInsights.map((ins, i) => (
+                <li key={i} className="flex items-start gap-1.5">
+                  <span className="opacity-50 mt-0.5">•</span>
+                  <span>{ins}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       </div>
@@ -2138,7 +2224,7 @@ function App() {
       </div>
 
       {/* AI Insight */}
-      <AIInsight cgData={cgData} binanceData={binanceData} altseasonData={altseasonData} dayScore={dayScore} swingScore={swingScore} hodlScore={hodlScore} theme={theme} />
+      <AIInsight cgData={cgData} binanceData={binanceData} altseasonData={altseasonData} defiData={defiData} dayScore={dayScore} swingScore={swingScore} hodlScore={hodlScore} theme={theme} />
 
       {/* Main Content */}
       <div className="p-3 space-y-3">
