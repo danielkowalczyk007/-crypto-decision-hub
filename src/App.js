@@ -145,6 +145,11 @@ const fetchCoinGeckoData = async () => {
     const global = await globalRes.json();
     const fgData = fgRes.ok ? await fgRes.json() : null;
     
+    const fgValue = parseInt(fgData?.data?.[0]?.value) || 50;
+    const fgClassification = fgData?.data?.[0]?.value_classification || 'Neutral';
+    // Map classification to Polish text
+    const fgText = fgValue <= 25 ? 'Extreme Fear' : fgValue <= 45 ? 'Fear' : fgValue <= 55 ? 'Neutral' : fgValue <= 75 ? 'Greed' : 'Extreme Greed';
+    
     return {
       btcPrice: {
         value: prices.bitcoin?.usd || 0,
@@ -162,12 +167,19 @@ const fetchCoinGeckoData = async () => {
         change: prices.solana?.usd_24h_change || 0,
         volume: prices.solana?.usd_24h_vol || 0
       },
-      btcDominance: global.data?.market_cap_percentage?.btc || 0,
-      totalMarketCap: global.data?.total_market_cap?.usd || 0,
-      totalVolume: global.data?.total_volume?.usd || 0,
+      btcDominance: {
+        value: parseFloat((global.data?.market_cap_percentage?.btc || 0).toFixed(1))
+      },
+      totalMarketCap: {
+        value: ((global.data?.total_market_cap?.usd || 0) / 1e12).toFixed(2)
+      },
+      totalVolume: {
+        value: ((global.data?.total_volume?.usd || 0) / 1e9).toFixed(0)
+      },
       fearGreed: {
-        value: parseInt(fgData?.data?.[0]?.value) || 50,
-        classification: fgData?.data?.[0]?.value_classification || 'Neutral'
+        value: fgValue,
+        text: fgText,
+        classification: fgClassification
       }
     };
   } catch (error) {
@@ -547,6 +559,162 @@ const helpContent = {
     ],
     tip: 'Porównuj TVL z ceną ETH - rozbieżność może sygnalizować zmianę trendu.',
     source: 'DefiLlama API'
+  },
+  ethPrice: {
+    title: 'Cena Ethereum',
+    emoji: '⟠',
+    description: 'Aktualna cena Ethereum w USD. ETH jest fundamentem DeFi i smart contractów.',
+    interpretation: [
+      { condition: '> +5% 24h', signal: 'bullish', text: '🟢 Silny wzrost - altcoiny mogą podążyć' },
+      { condition: '-2% do +2%', signal: 'neutral', text: '🟡 Stabilny - konsolidacja' },
+      { condition: '< -5% 24h', signal: 'bearish', text: '🔴 Spadek - presja na altcoiny' }
+    ],
+    tip: 'Obserwuj ETH/BTC ratio - rosnące ETH przy słabym BTC sygnalizuje altseason.',
+    source: 'CoinGecko API'
+  },
+  solPrice: {
+    title: 'Cena Solana',
+    emoji: '◎',
+    description: 'Aktualna cena Solana w USD. SOL jest liderem szybkich i tanich transakcji.',
+    interpretation: [
+      { condition: '> +7% 24h', signal: 'bullish', text: '🟢 Silny wzrost - momentum bycze' },
+      { condition: '-3% do +3%', signal: 'neutral', text: '🟡 Stabilny - normalne wahania' },
+      { condition: '< -7% 24h', signal: 'bearish', text: '🔴 Silny spadek - realizacja zysków' }
+    ],
+    tip: 'SOL często outperformuje w czasie altseason - obserwuj volume.',
+    source: 'CoinGecko API'
+  },
+  btcDominance: {
+    title: 'BTC Dominance',
+    emoji: '👑',
+    description: 'Udział Bitcoina w całkowitej kapitalizacji rynku crypto. Spadająca dominacja = altseason.',
+    interpretation: [
+      { condition: '> 55%', signal: 'bearish', text: '🔴 BTC Season - kapitał w BTC' },
+      { condition: '45-55%', signal: 'neutral', text: '🟡 Równowaga - mieszane sygnały' },
+      { condition: '< 45%', signal: 'bullish', text: '🟢 Altseason - kapitał w altcoinach' }
+    ],
+    tip: 'Spadająca dominacja BTC przy rosnących cenach = silny altseason.',
+    source: 'CoinGecko API'
+  },
+  altseasonIndex: {
+    title: 'Altseason Index',
+    emoji: '🚀',
+    description: 'Wskaźnik siły altcoinów względem BTC (0-100). Wysoki = altcoiny outperformują.',
+    interpretation: [
+      { condition: '> 70', signal: 'bullish', text: '🟢 Altseason - czas na altcoiny' },
+      { condition: '40-70', signal: 'neutral', text: '🟡 Mieszany - selektywne wybory' },
+      { condition: '< 40', signal: 'bearish', text: '🔴 BTC Season - zostań przy BTC' }
+    ],
+    tip: 'Łącz z ETH/BTC ratio dla potwierdzenia trendu altcoinów.',
+    source: 'Algorytm wewnętrzny'
+  },
+  stablecoinFlows: {
+    title: 'Stablecoin Flows',
+    emoji: '💵',
+    description: 'Napływy/odpływy stablecoinów (USDT, USDC). Rosnące = kapitał napływa na rynek.',
+    interpretation: [
+      { condition: '> +2% 7d', signal: 'bullish', text: '🟢 Napływ kapitału - bycze sygnały' },
+      { condition: '-1% do +1%', signal: 'neutral', text: '🟡 Stabilny - neutralne' },
+      { condition: '< -2% 7d', signal: 'bearish', text: '🔴 Odpływ kapitału - niedźwiedzie' }
+    ],
+    tip: 'Duży napływ USDT często poprzedza wzrosty BTC.',
+    source: 'DefiLlama API'
+  },
+  topGainers: {
+    title: 'Top Gainers 24h',
+    emoji: '🚀',
+    description: 'Kryptowaluty z największymi wzrostami w ciągu 24 godzin na Binance.',
+    interpretation: [
+      { condition: 'Dużo > +20%', signal: 'bullish', text: '🟢 Silne momentum - hype na rynku' },
+      { condition: 'Średnie +5-15%', signal: 'neutral', text: '🟡 Normalne - zdrowy rynek' },
+      { condition: 'Niewiele wzrostów', signal: 'bearish', text: '🔴 Słabe - brak momentum' }
+    ],
+    tip: 'Unikaj FOMO - kupowanie po +50% wzrostu często kończy się stratą.',
+    source: 'Binance API'
+  },
+  topLosers: {
+    title: 'Top Losers 24h',
+    emoji: '📉',
+    description: 'Kryptowaluty z największymi spadkami w ciągu 24 godzin na Binance.',
+    interpretation: [
+      { condition: 'Dużo < -20%', signal: 'bearish', text: '🔴 Panika - szukaj okazji kupna' },
+      { condition: 'Średnie -5-15%', signal: 'neutral', text: '🟡 Korekta - normalne' },
+      { condition: 'Niewiele spadków', signal: 'bullish', text: '🟢 Silny rynek - mało słabości' }
+    ],
+    tip: 'Duże spadki mogą być okazją, ale sprawdź fundamenty projektu.',
+    source: 'Binance API'
+  },
+  marketBreadth: {
+    title: 'Market Breadth',
+    emoji: '📊',
+    description: 'Stosunek rosnących do spadających kryptowalut. Pokazuje szerokość ruchu rynkowego.',
+    interpretation: [
+      { condition: '> 60% bullish', signal: 'bullish', text: '🟢 Szeroki wzrost - zdrowy trend' },
+      { condition: '40-60%', signal: 'neutral', text: '🟡 Mieszany - brak kierunku' },
+      { condition: '< 40% bullish', signal: 'bearish', text: '🔴 Szeroki spadek - słabość rynku' }
+    ],
+    tip: 'Rosnący BTC przy słabym breadth = rozbieżność, możliwa korekta.',
+    source: 'Binance API'
+  },
+  m2Supply: {
+    title: 'M2 Money Supply',
+    emoji: '🏦',
+    description: 'Podaż pieniądza M2 w USA. Ekspansja monetarna = więcej kapitału do aktywów ryzykownych.',
+    interpretation: [
+      { condition: 'Expanding > +5%', signal: 'bullish', text: '🟢 Ekspansja - kapitał napływa' },
+      { condition: 'Flat ±2%', signal: 'neutral', text: '🟡 Stabilny - brak zmian' },
+      { condition: 'Contracting', signal: 'bearish', text: '🔴 Zacieśnianie - ryzyko spadków' }
+    ],
+    tip: 'BTC historycznie koreluje z M2 - ekspansja = wzrosty.',
+    source: 'FRED API'
+  },
+  stablecoinSupply: {
+    title: 'Stablecoin Supply',
+    emoji: '💰',
+    description: 'Całkowita podaż stablecoinów. Rosnąca = więcej dry powder na rynku.',
+    interpretation: [
+      { condition: '> +3% 30d', signal: 'bullish', text: '🟢 Wzrost - kapitał napływa' },
+      { condition: '±1%', signal: 'neutral', text: '🟡 Stabilny - neutralne' },
+      { condition: '< -3% 30d', signal: 'bearish', text: '🔴 Spadek - kapitał ucieka' }
+    ],
+    tip: 'Rosnąca podaż stablecoinów często poprzedza rajdy cenowe.',
+    source: 'DefiLlama API'
+  },
+  openInterest: {
+    title: 'Open Interest',
+    emoji: '📈',
+    description: 'Wartość otwartych pozycji futures. Wysoki OI = większa spekulacja i zmienność.',
+    interpretation: [
+      { condition: 'ATH + wysoki funding', signal: 'bearish', text: '🔴 Przegrzanie - ryzyko cascade liquidations' },
+      { condition: 'Rosnący przy wzrostach', signal: 'neutral', text: '🟡 Zdrowy - potwierdza trend' },
+      { condition: 'Spadający OI', signal: 'bullish', text: '🟢 Deleveraging - zdrowszy rynek' }
+    ],
+    tip: 'Nagły spadek OI przy spadku ceny = cascade liquidations.',
+    source: 'Binance Futures API'
+  },
+  longShortRatio: {
+    title: 'Long/Short Ratio',
+    emoji: '⚖️',
+    description: 'Stosunek kont long do short. Contrarian indicator - ekstremalne wartości często się odwracają.',
+    interpretation: [
+      { condition: '< 0.9', signal: 'bullish', text: '🟢 Shorts dominują - potencjalne squeeze' },
+      { condition: '0.9 - 1.5', signal: 'neutral', text: '🟡 Zbalansowany rynek' },
+      { condition: '> 1.8', signal: 'bearish', text: '🔴 Longs dominują - ryzyko dump' }
+    ],
+    tip: 'Ekstremalnie wysokie L/S przy high funding = recepta na crash.',
+    source: 'Binance Futures API'
+  },
+  portfolio: {
+    title: 'Portfolio Binance',
+    emoji: '💼',
+    description: 'Twoje saldo na Binance (Spot i Futures). Wymaga klucza API z uprawnieniami do odczytu.',
+    interpretation: [
+      { condition: 'PnL > +10%', signal: 'bullish', text: '🟢 Dobra passa - rozważ zabezpieczenie zysków' },
+      { condition: 'PnL ±5%', signal: 'neutral', text: '🟡 Stabilne - kontynuuj strategię' },
+      { condition: 'PnL < -10%', signal: 'bearish', text: '🔴 Straty - przeanalizuj pozycje' }
+    ],
+    tip: 'Nigdy nie trzymaj wszystkiego na giełdzie - używaj cold wallet.',
+    source: 'Binance API (authenticated)'
   }
 };
 
