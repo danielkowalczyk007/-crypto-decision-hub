@@ -818,14 +818,16 @@ const AIInsight = ({ cgData, binanceData, altseasonData, dayScore, swingScore, h
   else if (btcChange > 5) { insight = `BTC +${btcChange.toFixed(1)}% = silne momentum.`; signal = 'bullish'; emoji = '📈'; }
   else if (btcChange < -5) { insight = `BTC ${btcChange.toFixed(1)}% = korekta.`; signal = 'bearish'; emoji = '📉'; }
   else { const avg = Math.round((dayScore + swingScore + hodlScore) / 3); insight = `Mieszane sygnały (avg: ${avg}). Obserwuj.`; }
-  const gradientClass = signal === 'bullish' ? 'bg-gradient-to-r from-green-500/25 to-transparent border-l-green-500' : signal === 'bearish' ? 'bg-gradient-to-r from-red-500/25 to-transparent border-l-red-500' : 'bg-gradient-to-r from-yellow-500/25 to-transparent border-l-yellow-500';
+  const bgClass = signal === 'bullish' ? 'bg-green-500/15 border-l-green-500' : signal === 'bearish' ? 'bg-red-500/15 border-l-red-500' : 'bg-yellow-500/15 border-l-yellow-500';
   return (
-    <div className={`p-3 ${gradientClass} border-l-4 rounded-lg mx-3 mb-3`}>
-      <div className="flex items-start gap-2.5">
-        <span className="text-xl">{emoji}</span>
-        <div>
-          <div className={`text-[10px] ${t.text} opacity-70 mb-0.5`}>🤖 AI INSIGHT</div>
-          <div className={`text-xs ${t.text} leading-relaxed`}>{insight}</div>
+    <div className="px-3 mb-3">
+      <div className={`p-3 ${bgClass} border-l-4 rounded-lg`}>
+        <div className="flex items-start gap-2.5">
+          <span className="text-xl">{emoji}</span>
+          <div className="min-w-0 flex-1">
+            <div className={`text-[10px] ${t.text} opacity-70 mb-0.5`}>🤖 AI INSIGHT</div>
+            <div className={`text-xs ${t.text} leading-relaxed`}>{insight}</div>
+          </div>
         </div>
       </div>
     </div>
@@ -839,21 +841,21 @@ const MiniScoreGauge = ({ score, label, icon, subtitle, onHelp, theme }) => {
   const needleAngle = -90 + (score / 100) * 180;
   const gaugeColors = ['#ef4444', '#f97316', '#eab308', '#84cc16', '#22c55e'];
   return (
-    <div className={`flex flex-col items-center w-[32%] min-w-[100px] p-2.5 ${t.isDark ? 'bg-slate-800/50' : 'bg-slate-100/70'} rounded-xl relative`}>
-      <button onClick={onHelp} className={`absolute top-1.5 right-1.5 w-5 h-5 rounded-full ${t.isDark ? 'bg-white/15' : 'bg-black/10'} border-none ${t.muted} text-[10px] cursor-pointer flex items-center justify-center z-10 hover:opacity-80`}>?</button>
-      <div className="flex items-center justify-center w-full mb-1.5 pr-5">
-        <span className={`text-xs font-bold ${t.text}`}>{icon} {label}</span>
+    <div className={`flex flex-col items-center w-[32%] min-w-[100px] p-2 ${t.isDark ? 'bg-slate-800/50' : 'bg-slate-100/70'} rounded-xl relative overflow-hidden`}>
+      <button onClick={onHelp} className={`absolute top-1 right-1 w-4 h-4 rounded-full ${t.isDark ? 'bg-white/15' : 'bg-black/10'} border-none ${t.muted} text-[8px] cursor-pointer flex items-center justify-center z-10 hover:opacity-80`}>?</button>
+      <div className="text-center mb-1">
+        <div className={`text-[10px] font-bold ${t.text}`}>{icon} {label}</div>
+        {subtitle && <div className={`text-[7px] ${t.muted}`}>{subtitle}</div>}
       </div>
-      <svg viewBox="0 0 100 55" className="w-full max-w-[100px] h-[55px]">
+      <svg viewBox="0 0 100 50" className="w-full max-w-[90px] h-[45px]">
         <defs><linearGradient id={`gauge-${label}`} x1="0%" y1="0%" x2="100%" y2="0%">{gaugeColors.map((c, i) => <stop key={i} offset={`${i * 25}%`} stopColor={c} />)}</linearGradient></defs>
-        <path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke={t.isDark ? '#334155' : '#e2e8f0'} strokeWidth="8" strokeLinecap="round" />
-        <path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke={`url(#gauge-${label})`} strokeWidth="8" strokeLinecap="round" strokeDasharray={`${(score / 100) * 126} 126`} />
-        <g transform={`rotate(${needleAngle} 50 50)`}><line x1="50" y1="50" x2="50" y2="18" stroke={signal.color} strokeWidth="3" strokeLinecap="round" /><circle cx="50" cy="50" r="5" fill={signal.color} /></g>
-        <text x="50" y="45" textAnchor="middle" fontSize="18" fontWeight="bold" fill={signal.color}>{score}</text>
+        <path d="M 10 45 A 40 40 0 0 1 90 45" fill="none" stroke={t.isDark ? '#334155' : '#e2e8f0'} strokeWidth="7" strokeLinecap="round" />
+        <path d="M 10 45 A 40 40 0 0 1 90 45" fill="none" stroke={`url(#gauge-${label})`} strokeWidth="7" strokeLinecap="round" strokeDasharray={`${(score / 100) * 126} 126`} />
+        <g transform={`rotate(${needleAngle} 50 45)`}><line x1="50" y1="45" x2="50" y2="15" stroke={signal.color} strokeWidth="2.5" strokeLinecap="round" /><circle cx="50" cy="45" r="4" fill={signal.color} /></g>
       </svg>
-      <div className="text-center mt-0.5">
-        <div className="text-[10px] font-bold tracking-wide" style={{ color: signal.color }}>{signal.text}</div>
-        {subtitle && <div className={`text-[8px] ${t.muted} mt-0.5`}>{subtitle}</div>}
+      <div className="text-center -mt-1">
+        <div className="text-[9px] font-bold tracking-wide" style={{ color: signal.color }}>{signal.text}</div>
+        <div className="text-sm font-bold" style={{ color: signal.color }}>{score}</div>
       </div>
     </div>
   );
@@ -2062,7 +2064,7 @@ function App() {
       </div>
 
       {/* Score Gauges */}
-      <div className={`flex justify-between gap-2 px-3 py-3 ${t.card} border-b ${t.border}`}>
+      <div className={`flex justify-between gap-2 px-3 py-3 ${t.card} border-b ${t.border} overflow-hidden`}>
         <MiniScoreGauge score={dayScore} label="Day" icon="🎯" subtitle="godziny-dni" onHelp={() => setHelpModal('dayTradingScore')} theme={theme} />
         <MiniScoreGauge score={swingScore} label="Swing" icon="📊" subtitle="dni-tygodnie" onHelp={() => setHelpModal('swingScore')} theme={theme} />
         <MiniScoreGauge score={hodlScore} label="HODL" icon="🏦" subtitle="tygodnie-mce" onHelp={() => setHelpModal('hodlScore')} theme={theme} />
