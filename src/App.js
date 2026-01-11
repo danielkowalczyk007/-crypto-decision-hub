@@ -168,7 +168,7 @@ const fetchCoinGeckoData = async () => {
         volume: prices.solana?.usd_24h_vol || 0
       },
       btcDominance: {
-        value: parseFloat((global.data?.market_cap_percentage?.btc || 0).toFixed(1))
+        value: parseFloat((global.data?.market_cap_percentage?.btc || 0).toFixed(2))
       },
       totalMarketCap: {
         value: ((global.data?.total_market_cap?.usd || 0) / 1e12).toFixed(2)
@@ -772,9 +772,16 @@ const HelpModal = ({ helpKey, onClose, theme }) => {
 
 const Card = ({ children, helpKey, onHelp, className = '', theme, signalColor, isLive }) => {
   const t = useTheme(theme);
-  const borderClass = signalColor === 'positive' ? 'border-l-4 border-l-green-500 bg-green-500/5' : signalColor === 'negative' ? 'border-l-4 border-l-red-500 bg-red-500/5' : signalColor === 'warning' ? 'border-l-4 border-l-yellow-500 bg-yellow-500/5' : '';
+  // Gradient background based on signal color
+  const gradientClass = signalColor === 'positive' 
+    ? 'bg-gradient-to-r from-green-500/20 via-transparent to-transparent border-l-4 border-l-green-500' 
+    : signalColor === 'negative' 
+    ? 'bg-gradient-to-r from-red-500/20 via-transparent to-transparent border-l-4 border-l-red-500' 
+    : signalColor === 'warning' 
+    ? 'bg-gradient-to-r from-yellow-500/20 via-transparent to-transparent border-l-4 border-l-yellow-500' 
+    : '';
   return (
-    <div className={`relative p-3.5 ${t.card} rounded-xl border ${t.border} ${borderClass} ${className}`}>
+    <div className={`relative p-3.5 ${t.card} rounded-xl border ${t.border} ${gradientClass} ${className}`}>
       {helpKey && <button onClick={() => onHelp(helpKey)} className={`absolute top-2 right-2 w-5 h-5 rounded-full ${t.isDark ? 'bg-slate-700' : 'bg-slate-200'} border-none ${t.muted} text-xs font-semibold cursor-pointer flex items-center justify-center opacity-70 hover:opacity-100 z-10`}>?</button>}
       {isLive && <span className={`absolute bottom-1.5 right-2 text-[8px] px-1.5 py-0.5 rounded bg-green-500/15 text-green-500 font-semibold flex items-center gap-1`}><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>LIVE</span>}
       {children}
@@ -832,19 +839,19 @@ const MiniScoreGauge = ({ score, label, icon, subtitle, onHelp, theme }) => {
   const needleAngle = -90 + (score / 100) * 180;
   const gaugeColors = ['#ef4444', '#f97316', '#eab308', '#84cc16', '#22c55e'];
   return (
-    <div className={`flex flex-col items-center w-[31%] min-w-[95px] p-1.5 ${t.isDark ? 'bg-slate-800/50' : 'bg-slate-100/70'} rounded-lg`}>
-      <div className="flex items-center justify-between w-full mb-0.5 px-0.5">
+    <div className={`flex flex-col items-center w-[31%] min-w-[95px] p-2 ${t.isDark ? 'bg-slate-800/50' : 'bg-slate-100/70'} rounded-lg relative`}>
+      <button onClick={onHelp} className={`absolute top-1 right-1 w-4 h-4 rounded-full ${t.isDark ? 'bg-white/10' : 'bg-black/10'} border-none ${t.muted} text-[9px] cursor-pointer flex items-center justify-center z-10`}>?</button>
+      <div className="flex items-center justify-center w-full mb-1">
         <span className={`text-[10px] font-bold ${t.text}`}>{icon} {label}</span>
-        <button onClick={onHelp} className={`w-4 h-4 rounded-full ${t.isDark ? 'bg-white/10' : 'bg-black/10'} border-none ${t.muted} text-[9px] cursor-pointer flex items-center justify-center`}>?</button>
       </div>
-      <svg viewBox="0 0 100 52" className="w-full max-w-[90px] h-[46px]">
+      <svg viewBox="0 0 100 52" className="w-full max-w-[85px] h-[44px]">
         <defs><linearGradient id={`gauge-${label}`} x1="0%" y1="0%" x2="100%" y2="0%">{gaugeColors.map((c, i) => <stop key={i} offset={`${i * 25}%`} stopColor={c} />)}</linearGradient></defs>
         <path d="M 10 48 A 40 40 0 0 1 90 48" fill="none" stroke={t.isDark ? '#334155' : '#e2e8f0'} strokeWidth="7" strokeLinecap="round" />
         <path d="M 10 48 A 40 40 0 0 1 90 48" fill="none" stroke={`url(#gauge-${label})`} strokeWidth="7" strokeLinecap="round" strokeDasharray={`${(score / 100) * 126} 126`} />
         <g transform={`rotate(${needleAngle} 50 48)`}><line x1="50" y1="48" x2="50" y2="18" stroke={signal.color} strokeWidth="2.5" strokeLinecap="round" /><circle cx="50" cy="48" r="4" fill={signal.color} /></g>
         <text x="50" y="42" textAnchor="middle" className="text-lg font-bold" fill={signal.color}>{score}</text>
       </svg>
-      <div className="text-center -mt-1">
+      <div className="text-center -mt-0.5">
         <div className="text-[9px] font-bold" style={{ color: signal.color }}>{signal.text}</div>
         {subtitle && <div className={`text-[7px] ${t.muted}`}>{subtitle}</div>}
       </div>
@@ -1691,9 +1698,9 @@ const ComparisonMode = ({ theme, onHelp }) => {
       {!loading && viewMode === 'radar' && radarData.length > 0 && (
         <div className={`p-3 ${t.card} rounded-xl border ${t.border}`}>
           <div className={`text-xs font-semibold ${t.text} mb-3`}>🎯 Porównanie metryk</div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="flex flex-wrap gap-3">
             {radarData.map(coin => (
-              <div key={coin.id} className={`p-3 ${t.bg} rounded-lg`}>
+              <div key={coin.id} className={`p-3 ${t.bg} rounded-lg flex-1 min-w-[140px] max-w-[calc(50%-6px)]`}>
                 <div className="flex items-center gap-2 mb-3">
                   <div className="w-3 h-3 rounded-full" style={{ backgroundColor: coin.color }}></div>
                   <span className={`text-sm font-bold ${t.text}`}>{coin.symbol}</span>
@@ -2125,9 +2132,9 @@ function App() {
                     <div className={`text-[9px] ${t.muted}`}>Altseason Index</div>
                     <div className={`text-xl font-bold ${(altseasonData?.altseasonIndex || 0) > 60 ? 'text-green-500' : (altseasonData?.altseasonIndex || 0) < 40 ? 'text-red-500' : 'text-yellow-500'}`}>{altseasonData?.altseasonIndex || '--'}</div>
                   </div>
-                  <div className={`p-2.5 ${t.bg} rounded-lg`}><div className={`text-[9px] ${t.muted}`}>ETH/BTC</div><div className={`text-xl font-bold ${t.text}`}>{altseasonData?.ethBtcRatio || '--'}</div></div>
-                  <div className={`p-2.5 ${t.bg} rounded-lg`}><div className={`text-[9px] ${t.muted}`}>Total2</div><div className={`text-xl font-bold ${t.text}`}>${altseasonData?.total2 || '--'}T</div></div>
-                  <div className={`p-2.5 ${t.bg} rounded-lg`}><div className={`text-[9px] ${t.muted}`}>BTC Dom</div><div className={`text-xl font-bold ${t.text}`}>{altseasonData?.btcDominance || '--'}%</div></div>
+                  <div className={`p-2.5 ${t.bg} rounded-lg`}><div className={`text-[9px] ${t.muted}`}>ETH/BTC</div><div className={`text-xl font-bold ${t.text}`}>{altseasonData?.ethBtcRatio ? altseasonData.ethBtcRatio.toFixed(5) : '--'}</div></div>
+                  <div className={`p-2.5 ${t.bg} rounded-lg`}><div className={`text-[9px] ${t.muted}`}>Total2</div><div className={`text-xl font-bold ${t.text}`}>${altseasonData?.total2Cap ? altseasonData.total2Cap.toFixed(2) : '--'}T</div></div>
+                  <div className={`p-2.5 ${t.bg} rounded-lg`}><div className={`text-[9px] ${t.muted}`}>BTC Dom</div><div className={`text-xl font-bold ${t.text}`}>{altseasonData?.btcDominance ? altseasonData.btcDominance.toFixed(2) : '--'}%</div></div>
                 </div>
               )}
             </Card>
