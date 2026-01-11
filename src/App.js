@@ -337,10 +337,15 @@ const fetchFredData = async () => {
 // ============== MARKET STRUCTURE (Top Gainers/Losers) ==============
 const fetchMarketStructure = async () => {
   try {
+    console.log('Fetching market structure from Binance...');
     const response = await fetch('https://api.binance.com/api/v3/ticker/24hr');
-    if (!response.ok) throw new Error('Binance ticker error');
+    if (!response.ok) {
+      console.error('Binance ticker response not OK:', response.status, response.statusText);
+      throw new Error('Binance ticker error');
+    }
     
     const data = await response.json();
+    console.log('Binance ticker data received:', data?.length, 'pairs');
     
     // Filtruj tylko pary USDT i wyklucz stablecoiny
     const stablecoins = ['BUSD', 'USDC', 'TUSD', 'FDUSD', 'DAI', 'USDP'];
@@ -351,6 +356,8 @@ const fetchMarketStructure = async () => {
       if (parseFloat(t.quoteVolume) < 1000000) return false; // min $1M volume
       return true;
     });
+    
+    console.log('Filtered USDT pairs:', usdtPairs.length);
     
     // Sortuj po zmianie procentowej
     const sorted = usdtPairs.sort((a, b) => parseFloat(b.priceChangePercent) - parseFloat(a.priceChangePercent));
@@ -374,6 +381,8 @@ const fetchMarketStructure = async () => {
     const gainers = usdtPairs.filter(t => parseFloat(t.priceChangePercent) > 0).length;
     const losers = usdtPairs.filter(t => parseFloat(t.priceChangePercent) < 0).length;
     const unchanged = usdtPairs.length - gainers - losers;
+    
+    console.log('Market Structure result - gainers:', gainers, 'losers:', losers, 'topGainers:', topGainers.length);
     
     return {
       topGainers,
@@ -2170,12 +2179,12 @@ function App() {
               </div>
               {loading ? <SkeletonLoader width="w-full" height="h-24" theme={theme} /> : (
                 <div className="space-y-2">
-                  {(showAllGainers ? msData?.topGainers : msData?.topGainers?.slice(0, 5))?.map((coin, i) => (
+                  {msData?.topGainers?.length > 0 ? (showAllGainers ? msData?.topGainers : msData?.topGainers?.slice(0, 5))?.map((coin, i) => (
                     <div key={i} className={`flex justify-between items-center p-2 ${t.bg} rounded-lg`}>
-                      <div className="flex items-center gap-2"><span className={`text-[10px] font-bold ${t.muted} w-4`}>{i + 1}</span><span className={`text-xs font-semibold ${t.text}`}>{coin.name}</span></div>
-                      <span className="text-xs font-bold text-green-500">+{coin.change24h}%</span>
+                      <div className="flex items-center gap-2"><span className={`text-[10px] font-bold ${t.muted} w-4`}>{i + 1}</span><span className={`text-xs font-semibold ${t.text}`}>{coin.name?.replace('USDT', '')}</span></div>
+                      <span className="text-xs font-bold text-green-500">+{coin.change24h?.toFixed(2)}%</span>
                     </div>
-                  ))}
+                  )) : <div className={`text-center py-4 ${t.muted} text-xs`}>Ładowanie danych...</div>}
                 </div>
               )}
             </Card>
@@ -2186,22 +2195,22 @@ function App() {
               </div>
               {loading ? <SkeletonLoader width="w-full" height="h-24" theme={theme} /> : (
                 <div className="space-y-2">
-                  {(showAllLosers ? msData?.topLosers : msData?.topLosers?.slice(0, 5))?.map((coin, i) => (
+                  {msData?.topLosers?.length > 0 ? (showAllLosers ? msData?.topLosers : msData?.topLosers?.slice(0, 5))?.map((coin, i) => (
                     <div key={i} className={`flex justify-between items-center p-2 ${t.bg} rounded-lg`}>
-                      <div className="flex items-center gap-2"><span className={`text-[10px] font-bold ${t.muted} w-4`}>{i + 1}</span><span className={`text-xs font-semibold ${t.text}`}>{coin.name}</span></div>
-                      <span className="text-xs font-bold text-red-500">{coin.change24h}%</span>
+                      <div className="flex items-center gap-2"><span className={`text-[10px] font-bold ${t.muted} w-4`}>{i + 1}</span><span className={`text-xs font-semibold ${t.text}`}>{coin.name?.replace('USDT', '')}</span></div>
+                      <span className="text-xs font-bold text-red-500">{coin.change24h?.toFixed(2)}%</span>
                     </div>
-                  ))}
+                  )) : <div className={`text-center py-4 ${t.muted} text-xs`}>Ładowanie danych...</div>}
                 </div>
               )}
             </Card>
-            <Card helpKey="marketBreadth" onHelp={setHelpModal} theme={theme} isLive signalColor={parseFloat(msData?.bullishPercent || 50) > 50 ? 'positive' : parseFloat(msData?.bullishPercent || 50) < 50 ? 'negative' : 'warning'}>
+            <Card helpKey="marketBreadth" onHelp={setHelpModal} theme={theme} isLive signalColor={parseFloat(msData?.breadth?.bullishPercent || 50) > 50 ? 'positive' : parseFloat(msData?.breadth?.bullishPercent || 50) < 50 ? 'negative' : 'warning'}>
               <div className={`text-xs font-semibold mb-3 ${t.text}`}>📊 Market Breadth</div>
               {loading ? <SkeletonLoader width="w-full" height="h-16" theme={theme} /> : (
                 <div className="grid grid-cols-3 gap-2 text-center">
-                  <div className={`p-2 ${t.bg} rounded-lg`}><div className="text-lg font-bold text-green-500">{msData?.gainers || '--'}</div><div className={`text-[9px] ${t.muted}`}>Rosnące</div></div>
-                  <div className={`p-2 ${t.bg} rounded-lg`}><div className="text-lg font-bold text-red-500">{msData?.losers || '--'}</div><div className={`text-[9px] ${t.muted}`}>Spadające</div></div>
-                  <div className={`p-2 ${t.bg} rounded-lg`}><div className={`text-lg font-bold ${parseFloat(msData?.bullishPercent) > 50 ? 'text-green-500' : 'text-red-500'}`}>{msData?.bullishPercent || '--'}%</div><div className={`text-[9px] ${t.muted}`}>Bullish</div></div>
+                  <div className={`p-2 ${t.bg} rounded-lg`}><div className="text-lg font-bold text-green-500">{msData?.breadth?.gainers || '--'}</div><div className={`text-[9px] ${t.muted}`}>Rosnące</div></div>
+                  <div className={`p-2 ${t.bg} rounded-lg`}><div className="text-lg font-bold text-red-500">{msData?.breadth?.losers || '--'}</div><div className={`text-[9px] ${t.muted}`}>Spadające</div></div>
+                  <div className={`p-2 ${t.bg} rounded-lg`}><div className={`text-lg font-bold ${parseFloat(msData?.breadth?.bullishPercent) > 50 ? 'text-green-500' : 'text-red-500'}`}>{msData?.breadth?.bullishPercent || '--'}%</div><div className={`text-[9px] ${t.muted}`}>Bullish</div></div>
                 </div>
               )}
             </Card>
