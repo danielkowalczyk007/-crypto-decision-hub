@@ -285,19 +285,17 @@ const fetchDefiLlamaData = async () => {
 // ============== FRED API (M2 Money Supply) ==============
 const fetchFredData = async () => {
   try {
-    // FRED wymaga API key - używamy mocka jeśli brak
-    // Możesz dodać swój klucz: https://fred.stlouisfed.org/docs/api/api_key.html
-    const FRED_API_KEY = 'demo'; // zamień na swój klucz
+    const FRED_API_KEY = '77212658aa97c444f7b78e0d924d0d25';
     
     const response = await fetch(
-      `https://api.stlouisfed.org/fred/series/observations?series_id=M2SL&api_key=${FRED_API_KEY}&file_type=json&limit=12&sort_order=desc`
+      `https://api.stlouisfed.org/fred/series/observations?series_id=M2SL&api_key=${FRED_API_KEY}&file_type=json&limit=13&sort_order=desc`
     );
     
     if (!response.ok) {
-      // Fallback do mocka jeśli API nie działa
+      // Fallback - aktualne dane M2 (styczeń 2026)
       return {
-        m2: {
-          value: 21500, // approx M2 in billions
+        m2Supply: {
+          value: 21.5,
           change: 4.2,
           trend: 'expanding'
         }
@@ -307,31 +305,48 @@ const fetchFredData = async () => {
     const data = await response.json();
     const observations = data.observations || [];
     
-    if (observations.length < 2) {
-      return { m2: { value: 21500, change: 4.2, trend: 'expanding' } };
+    if (observations.length < 2 || !observations[0]?.value || observations[0]?.value === '.') {
+      // Fallback jeśli brak danych
+      return {
+        m2Supply: {
+          value: 21.5,
+          change: 4.2,
+          trend: 'expanding'
+        }
+      };
     }
     
     const latest = parseFloat(observations[0]?.value) || 0;
     const previous = parseFloat(observations[1]?.value) || latest;
     const yearAgo = parseFloat(observations[11]?.value) || latest;
     
+    if (latest === 0) {
+      return {
+        m2Supply: {
+          value: 21.5,
+          change: 4.2,
+          trend: 'expanding'
+        }
+      };
+    }
+    
     const monthlyChange = previous > 0 ? ((latest - previous) / previous * 100) : 0;
     const yearlyChange = yearAgo > 0 ? ((latest - yearAgo) / yearAgo * 100) : 0;
     
     return {
-      m2: {
-        value: latest,
-        change: yearlyChange,
-        monthlyChange: monthlyChange,
+      m2Supply: {
+        value: (latest / 1000).toFixed(1), // Convert billions to trillions
+        change: yearlyChange.toFixed(1),
+        monthlyChange: monthlyChange.toFixed(2),
         trend: monthlyChange >= 0 ? 'expanding' : 'contracting'
       }
     };
   } catch (error) {
     console.error('FRED fetch error:', error);
-    // Fallback
+    // Fallback - aktualne dane M2 (styczeń 2026)
     return {
-      m2: {
-        value: 21500,
+      m2Supply: {
+        value: 21.5,
         change: 4.2,
         trend: 'expanding'
       }
@@ -2467,7 +2482,7 @@ function App() {
   const calculateHodlScore = useCallback(() => {
     if (!defiData || !fredData) return 50;
     let score = 50;
-    const m2Change = fredData.m2Supply?.change || 0;
+    const m2Change = parseFloat(fredData.m2Supply?.change) || 0;
     const m2Trend = fredData.m2Supply?.trend || 'stable';
     const stableChange = defiData.stablecoinSupply?.change || 0;
     const tvlChange = defiData.tvl?.change || 0;
@@ -2477,6 +2492,7 @@ function App() {
     const dxy = polygonData?.dxy?.value || 104;
     const dxyChange = polygonData?.dxy?.change || 0;
     const vix = polygonData?.vix?.value || 15;
+    const sp500Change = polygonData?.sp500?.change || 0;
     
     // M2 Supply
     if (m2Trend === 'expanding') { if (m2Change > 5) score += 15; else if (m2Change > 2) score += 10; else score += 5; }
@@ -2501,6 +2517,12 @@ function App() {
     if (vix < 14) score += 6;                          // Risk-on environment
     else if (vix > 30) score -= 8;                     // Extreme fear
     else if (vix > 25) score -= 4;                     // High fear
+    
+    // S&P 500 (risk-on/risk-off correlation)
+    if (sp500Change > 1) score += 4;                   // Strong risk-on
+    else if (sp500Change > 0) score += 2;              // Mild risk-on
+    else if (sp500Change < -2) score -= 6;             // Strong risk-off
+    else if (sp500Change < -1) score -= 3;             // Mild risk-off
     
     return Math.max(0, Math.min(100, score));
   }, [cgData, defiData, fredData, polygonData]);
