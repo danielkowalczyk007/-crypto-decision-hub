@@ -262,17 +262,21 @@ const fetchDefiLlamaData = async () => {
     
     return {
       tvl: {
-        value: currentTvl / 1e9, // in billions
-        change: tvlChange
+        value: (currentTvl / 1e9).toFixed(1),
+        change: tvlChange.toFixed(1)
       },
-      stablecoins: {
-        total: totalStables / 1e9,
-        usdt: usdt?.circulating?.peggedUSD ? usdt.circulating.peggedUSD / 1e9 : 0,
-        usdc: usdc?.circulating?.peggedUSD ? usdc.circulating.peggedUSD / 1e9 : 0,
+      stablecoinSupply: {
+        value: (totalStables / 1e9).toFixed(1),
+        change: ((usdt?.circulatingPrevDay?.peggedUSD && usdc?.circulatingPrevDay?.peggedUSD) ? 
+          (((usdt.circulating?.peggedUSD || 0) + (usdc.circulating?.peggedUSD || 0)) - 
+           ((usdt.circulatingPrevDay?.peggedUSD || 0) + (usdc.circulatingPrevDay?.peggedUSD || 0))) / 
+          ((usdt.circulatingPrevDay?.peggedUSD || 1) + (usdc.circulatingPrevDay?.peggedUSD || 1)) * 100 : 0).toFixed(2),
+        usdt: usdt?.circulating?.peggedUSD ? (usdt.circulating.peggedUSD / 1e9).toFixed(1) : '0',
+        usdc: usdc?.circulating?.peggedUSD ? (usdc.circulating.peggedUSD / 1e9).toFixed(1) : '0',
         usdtChange: usdt?.circulatingPrevDay?.peggedUSD ? 
-          ((usdt.circulating.peggedUSD - usdt.circulatingPrevDay.peggedUSD) / usdt.circulatingPrevDay.peggedUSD * 100) : 0,
+          ((usdt.circulating.peggedUSD - usdt.circulatingPrevDay.peggedUSD) / usdt.circulatingPrevDay.peggedUSD * 100).toFixed(2) : '0',
         usdcChange: usdc?.circulatingPrevDay?.peggedUSD ?
-          ((usdc.circulating.peggedUSD - usdc.circulatingPrevDay.peggedUSD) / usdc.circulatingPrevDay.peggedUSD * 100) : 0
+          ((usdc.circulating.peggedUSD - usdc.circulatingPrevDay.peggedUSD) / usdc.circulatingPrevDay.peggedUSD * 100).toFixed(2) : '0'
       },
       topProtocols
     };
@@ -1000,8 +1004,8 @@ const AIInsight = ({ cgData, binanceData, altseasonData, defiData, dayScore, swi
   const altIndex = altseasonData?.altseasonIndex || 50;
   const ethBtc = altseasonData?.ethBtcRatio || 0;
   const tvlChange = defiData?.tvl?.change || 0;
-  const usdtChange = defiData?.stablecoins?.usdtChange || 0;
-  const usdcChange = defiData?.stablecoins?.usdcChange || 0;
+  const usdtChange = parseFloat(defiData?.stablecoinSupply?.usdtChange) || 0;
+  const usdcChange = parseFloat(defiData?.stablecoinSupply?.usdcChange) || 0;
   const stableChange = (usdtChange + usdcChange) / 2; // średnia zmiana
   const avgScore = Math.round((dayScore + swingScore + hodlScore) / 3);
   
@@ -1779,13 +1783,17 @@ const ComparisonMode = ({ theme, onHelp }) => {
 
   // Normalize sparkline data for overlay chart
   const normalizedChartData = comparisonData ? (() => {
-    const maxLen = Math.max(...comparisonData.map(c => c.sparkline?.length || 0));
+    const sparklines = comparisonData.filter(c => c.sparkline && c.sparkline.length > 0);
+    if (sparklines.length === 0) return [];
+    const maxLen = Math.max(...sparklines.map(c => c.sparkline.length));
+    if (maxLen === 0) return [];
+    const step = Math.max(1, Math.ceil(maxLen / 50));
     const points = [];
-    for (let i = 0; i < maxLen; i += Math.ceil(maxLen / 50)) {
+    for (let i = 0; i < maxLen; i += step) {
       const point = { index: i };
       comparisonData.forEach(coin => {
         if (coin.sparkline && coin.sparkline.length > 0) {
-          const idx = Math.floor(i * coin.sparkline.length / maxLen);
+          const idx = Math.min(Math.floor(i * coin.sparkline.length / maxLen), coin.sparkline.length - 1);
           const firstPrice = coin.sparkline[0];
           const currentPrice = coin.sparkline[idx] || firstPrice;
           point[coin.symbol] = firstPrice > 0 ? ((currentPrice - firstPrice) / firstPrice * 100) : 0;
@@ -2490,9 +2498,9 @@ function App() {
     if (!cgData || !defiData) return 50;
     let score = 50;
     const fg = cgData.fearGreed?.value || 50;
-    const tvlChange = defiData.tvl?.change || 0;
+    const tvlChange = parseFloat(defiData.tvl?.change) || 0;
     const btcDom = cgData.btcDominance?.value || 50;
-    const stableChange = defiData.stablecoinSupply?.change || 0;
+    const stableChange = parseFloat(defiData.stablecoinSupply?.change) || 0;
     const altIndex = altseasonData?.altseasonIndex || 50;
     if (fg < 25) score += 12; else if (fg < 40) score += 6; else if (fg > 75) score -= 10; else if (fg > 60) score -= 4;
     if (tvlChange > 5) score += 10; else if (tvlChange > 2) score += 5; else if (tvlChange < -5) score -= 10; else if (tvlChange < -2) score -= 5;
@@ -2507,8 +2515,8 @@ function App() {
     let score = 50;
     const m2Change = parseFloat(fredData.m2Supply?.change) || 0;
     const m2Trend = fredData.m2Supply?.trend || 'stable';
-    const stableChange = defiData.stablecoinSupply?.change || 0;
-    const tvlChange = defiData.tvl?.change || 0;
+    const stableChange = parseFloat(defiData.stablecoinSupply?.change) || 0;
+    const tvlChange = parseFloat(defiData.tvl?.change) || 0;
     const fg = cgData?.fearGreed?.value || 50;
     
     // Polygon data integration
@@ -2727,17 +2735,17 @@ function App() {
               )}
             </Card>
             <EthBtcHistoryChart data={ethBtcHistory} timeframe={ethBtcTimeframe} onTimeframeChange={setEthBtcTimeframe} loading={ethBtcLoading} onHelp={() => setHelpModal('ethBtcHistory')} theme={theme} />
-            <Card helpKey="stablecoinFlows" onHelp={setHelpModal} theme={theme} isLive signalColor={((altseasonData?.usdt?.change || 0) + (altseasonData?.usdc?.change || 0)) > 0 ? 'positive' : ((altseasonData?.usdt?.change || 0) + (altseasonData?.usdc?.change || 0)) < 0 ? 'negative' : undefined}>
+            <Card helpKey="stablecoinFlows" onHelp={setHelpModal} theme={theme} isLive signalColor={(parseFloat(defiData?.stablecoinSupply?.usdtChange || 0) + parseFloat(defiData?.stablecoinSupply?.usdcChange || 0)) > 0 ? 'positive' : (parseFloat(defiData?.stablecoinSupply?.usdtChange || 0) + parseFloat(defiData?.stablecoinSupply?.usdcChange || 0)) < 0 ? 'negative' : undefined}>
               <div className={`text-xs font-semibold mb-3 ${t.text}`}>💵 Stablecoin Flows</div>
               {loading ? <SkeletonLoader width="w-full" height="h-16" theme={theme} /> : (
                 <div className="grid grid-cols-2 gap-2">
-                  <div className={`p-2.5 ${t.bg} rounded-lg border-l-4 ${(altseasonData?.usdt?.change || 0) >= 0 ? 'border-l-green-500' : 'border-l-red-500'}`}>
-                    <div className="flex justify-between items-center"><span className={`text-[9px] ${t.muted}`}>USDT</span><span className={`text-[9px] font-semibold ${(altseasonData?.usdt?.change || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>{altseasonData?.usdt?.change >= 0 ? '+' : ''}{altseasonData?.usdt?.change?.toFixed(2) || '--'}%</span></div>
-                    <div className={`text-base font-bold ${t.text}`}>${altseasonData?.usdt?.mcap || '--'}B</div>
+                  <div className={`p-2.5 ${t.bg} rounded-lg border-l-4 ${parseFloat(defiData?.stablecoinSupply?.usdtChange || 0) >= 0 ? 'border-l-green-500' : 'border-l-red-500'}`}>
+                    <div className="flex justify-between items-center"><span className={`text-[9px] ${t.muted}`}>USDT</span><span className={`text-[9px] font-semibold ${parseFloat(defiData?.stablecoinSupply?.usdtChange || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>{parseFloat(defiData?.stablecoinSupply?.usdtChange || 0) >= 0 ? '+' : ''}{defiData?.stablecoinSupply?.usdtChange || '--'}%</span></div>
+                    <div className={`text-base font-bold ${t.text}`}>${defiData?.stablecoinSupply?.usdt || '--'}B</div>
                   </div>
-                  <div className={`p-2.5 ${t.bg} rounded-lg border-l-4 ${(altseasonData?.usdc?.change || 0) >= 0 ? 'border-l-green-500' : 'border-l-red-500'}`}>
-                    <div className="flex justify-between items-center"><span className={`text-[9px] ${t.muted}`}>USDC</span><span className={`text-[9px] font-semibold ${(altseasonData?.usdc?.change || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>{altseasonData?.usdc?.change >= 0 ? '+' : ''}{altseasonData?.usdc?.change?.toFixed(2) || '--'}%</span></div>
-                    <div className={`text-base font-bold ${t.text}`}>${altseasonData?.usdc?.mcap || '--'}B</div>
+                  <div className={`p-2.5 ${t.bg} rounded-lg border-l-4 ${parseFloat(defiData?.stablecoinSupply?.usdcChange || 0) >= 0 ? 'border-l-green-500' : 'border-l-red-500'}`}>
+                    <div className="flex justify-between items-center"><span className={`text-[9px] ${t.muted}`}>USDC</span><span className={`text-[9px] font-semibold ${parseFloat(defiData?.stablecoinSupply?.usdcChange || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>{parseFloat(defiData?.stablecoinSupply?.usdcChange || 0) >= 0 ? '+' : ''}{defiData?.stablecoinSupply?.usdcChange || '--'}%</span></div>
+                    <div className={`text-base font-bold ${t.text}`}>${defiData?.stablecoinSupply?.usdc || '--'}B</div>
                   </div>
                 </div>
               )}
@@ -3015,10 +3023,9 @@ function App() {
               </div>
               {(chartView === 'analysis' || chartView === 'both') && (
                 <div className="flex gap-1 mb-3">
-                  {['15m', '1h', '4h', '1D', '1W'].map(i => {
-                    const val = i === '15m' ? '15' : i === '1h' ? '60' : i === '4h' ? '240' : i;
-                    return <button key={i} onClick={() => setTaInterval(val)} className={`flex-1 py-1.5 rounded text-[9px] font-semibold cursor-pointer ${taInterval === val ? 'bg-blue-500/20 text-blue-500 border-2 border-blue-500' : `${t.bg} ${t.muted} border ${t.border}`}`}>{i}</button>;
-                  })}
+                  {[{ label: '15m', val: '15' }, { label: '1h', val: '60' }, { label: '4h', val: '240' }, { label: '1D', val: '1D' }, { label: '1W', val: '1W' }].map(i => (
+                    <button key={i.val} onClick={() => setTaInterval(i.val)} className={`flex-1 py-1.5 rounded text-[9px] font-semibold cursor-pointer ${taInterval === i.val ? 'bg-blue-500/20 text-blue-500 border-2 border-blue-500' : `${t.bg} ${t.muted} border ${t.border}`}`}>{i.label}</button>
+                  ))}
                 </div>
               )}
             </Card>
