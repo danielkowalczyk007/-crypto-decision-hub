@@ -354,7 +354,7 @@ const fetchFredData = async () => {
   }
 };
 
-// ============== POLYGON.IO DATA (DXY, S&P500, Gold, VIX) ==============
+// ============== POLYGON.IO DATA (DXY, S&P500, Gold, Silver, VIX) ==============
 const POLYGON_API_KEY = '8NH1cpI_SZ0J7RanOyCx9phpJjudm8dZ';
 
 const fetchPolygonData = async () => {
@@ -378,33 +378,56 @@ const fetchPolygonData = async () => {
       fetch(endpoints.vix).then(r => r.json())
     ]);
     
-    const parseResult = (result, fallback) => {
+    // Debug: log raw responses
+    console.log('Polygon raw results:', results.map((r, i) => ({
+      index: i,
+      status: r.status,
+      hasResults: r.value?.results?.length > 0,
+      firstResult: r.value?.results?.[0]
+    })));
+    
+    const parseResult = (result, fallback, name) => {
       if (result.status === 'fulfilled' && result.value?.results?.[0]) {
         const d = result.value.results[0];
         const change = d.o > 0 ? ((d.c - d.o) / d.o * 100) : 0;
-        return { value: d.c, open: d.o, high: d.h, low: d.l, change: change, volume: d.v || 0, timestamp: d.t };
+        const parsed = { value: d.c, open: d.o, high: d.h, low: d.l, change: change, volume: d.v || 0, timestamp: d.t };
+        console.log(`✅ ${name}: Polygon returned $${d.c}`);
+        return parsed;
       }
+      console.warn(`⚠️ ${name}: Using fallback (Polygon returned no data)`);
       return fallback;
     };
     
+    // Aktualne fallbacki (styczeń 2026)
     const data = {
-      dxy: parseResult(results[0], { value: 104.5, change: -0.1, open: 104.6 }),
-      sp500: parseResult(results[1], { value: 5850, change: 0.3, open: 5835 }),
-      gold: parseResult(results[2], { value: 2650, change: 0.2, open: 2645 }),
-      silver: parseResult(results[3], { value: 30.5, change: 0.3, open: 30.4 }),
-      vix: parseResult(results[4], { value: 14.5, change: -1.2, open: 14.7 })
+      dxy: parseResult(results[0], { value: 109.5, change: 0.1, open: 109.4 }, 'DXY'),
+      sp500: parseResult(results[1], { value: 5950, change: 0.2, open: 5940 }, 'S&P500'),
+      gold: parseResult(results[2], { value: 4600, change: 0.3, open: 4585 }, 'GOLD'),
+      silver: parseResult(results[3], { value: 88, change: 0.4, open: 87.6 }, 'SILVER'),
+      vix: parseResult(results[4], { value: 16, change: -0.5, open: 16.1 }, 'VIX')
     };
     
-    console.log('Polygon data fetched:', data);
+    // Calculate Gold/Silver ratio
+    if (data.gold?.value && data.silver?.value) {
+      data.goldSilverRatio = {
+        value: data.gold.value / data.silver.value,
+        historical: 52 // Historical average for context
+      };
+      console.log(`📊 G/S Ratio: ${data.goldSilverRatio.value.toFixed(1)}x`);
+    }
+    
+    console.log('Polygon data fetched successfully:', data);
     return data;
   } catch (error) {
     console.error('Polygon fetch error:', error);
+    // Fallbacki z aktualnymi cenami (styczeń 2026)
     return {
-      dxy: { value: 104.5, change: -0.1 },
-      sp500: { value: 5850, change: 0.3 },
-      gold: { value: 2650, change: 0.2 },
-      silver: { value: 30.5, change: 0.3 },
-      vix: { value: 14.5, change: -1.2 }
+      dxy: { value: 109.5, change: 0.1 },
+      sp500: { value: 5950, change: 0.2 },
+      gold: { value: 4600, change: 0.3 },
+      silver: { value: 88, change: 0.4 },
+      vix: { value: 16, change: -0.5 },
+      goldSilverRatio: { value: 52.3, historical: 52 }
     };
   }
 };
