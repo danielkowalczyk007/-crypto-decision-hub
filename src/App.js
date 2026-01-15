@@ -929,26 +929,26 @@ const helpContent = {
   topGainers: {
     title: 'Top Gainers 24h',
     emoji: '🚀',
-    description: 'Kryptowaluty z największymi wzrostami w ciągu 24 godzin na Binance.',
+    description: 'Kryptowaluty z największymi wzrostami w ciągu 24 godzin. Top 250 coinów po market cap.',
     interpretation: [
       { condition: 'Dużo > +20%', signal: 'bullish', text: '🟢 Silne momentum - hype na rynku' },
       { condition: 'Średnie +5-15%', signal: 'neutral', text: '🟡 Normalne - zdrowy rynek' },
       { condition: 'Niewiele wzrostów', signal: 'bearish', text: '🔴 Słabe - brak momentum' }
     ],
     tip: 'Unikaj FOMO - kupowanie po +50% wzrostu często kończy się stratą.',
-    source: 'Binance API'
+    source: 'CoinGecko API'
   },
   topLosers: {
     title: 'Top Losers 24h',
     emoji: '📉',
-    description: 'Kryptowaluty z największymi spadkami w ciągu 24 godzin na Binance.',
+    description: 'Kryptowaluty z największymi spadkami w ciągu 24 godzin. Top 250 coinów po market cap.',
     interpretation: [
       { condition: 'Dużo < -20%', signal: 'bearish', text: '🔴 Panika - szukaj okazji kupna' },
       { condition: 'Średnie -5-15%', signal: 'neutral', text: '🟡 Korekta - normalne' },
       { condition: 'Niewiele spadków', signal: 'bullish', text: '🟢 Silny rynek - mało słabości' }
     ],
     tip: 'Duże spadki mogą być okazją, ale sprawdź fundamenty projektu.',
-    source: 'Binance API'
+    source: 'CoinGecko API'
   },
   marketBreadth: {
     title: 'Market Breadth',
@@ -960,7 +960,7 @@ const helpContent = {
       { condition: '< 40% bullish', signal: 'bearish', text: '🔴 Szeroki spadek - słabość rynku' }
     ],
     tip: 'Rosnący BTC przy słabym breadth = rozbieżność, możliwa korekta.',
-    source: 'Binance API'
+    source: 'CoinGecko API'
   },
   m2Supply: {
     title: 'M2 Money Supply',
@@ -1366,11 +1366,12 @@ const PositionCalculator = ({ theme, onHelp }) => {
 const SectorAnalysis = ({ topGainers, theme }) => {
   const t = useTheme(theme);
   const sectorKeywords = {
-    'AI': ['FET', 'AGIX', 'OCEAN', 'RNDR', 'TAO', 'ARKM', 'WLD'],
-    'MEME': ['DOGE', 'SHIB', 'PEPE', 'FLOKI', 'BONK', 'WIF', 'NEIRO', 'PNUT'],
-    'DeFi': ['UNI', 'AAVE', 'COMP', 'MKR', 'CRV', 'DYDX', 'GMX', 'PENDLE'],
-    'L1/L2': ['SOL', 'AVAX', 'MATIC', 'ARB', 'OP', 'APT', 'SUI', 'SEI', 'INJ'],
-    'Gaming': ['AXS', 'SAND', 'MANA', 'GALA', 'IMX', 'PIXEL', 'PORTAL']
+    'AI': ['FET', 'AGIX', 'OCEAN', 'RNDR', 'TAO', 'ARKM', 'WLD', 'NEAR', 'GRT', 'THETA'],
+    'MEME': ['DOGE', 'SHIB', 'PEPE', 'FLOKI', 'BONK', 'WIF', 'NEIRO', 'PNUT', 'BRETT', 'TURBO'],
+    'DeFi': ['UNI', 'AAVE', 'COMP', 'MKR', 'CRV', 'DYDX', 'GMX', 'PENDLE', 'SNX', 'SUSHI', '1INCH'],
+    'L1/L2': ['SOL', 'AVAX', 'MATIC', 'ARB', 'OP', 'APT', 'SUI', 'SEI', 'INJ', 'TIA', 'STRK', 'ZK'],
+    'Gaming': ['AXS', 'SAND', 'MANA', 'GALA', 'IMX', 'PIXEL', 'PORTAL', 'PRIME', 'BIGTIME', 'BEAM'],
+    'Infrastructure': ['LINK', 'DOT', 'ATOM', 'QNT', 'FIL', 'AR', 'EGLD', 'HBAR', 'VET', 'XLM']
   };
   const sectorScores = {}; const sectorCoins = {};
   Object.keys(sectorKeywords).forEach(s => { sectorScores[s] = 0; sectorCoins[s] = []; });
@@ -1385,7 +1386,7 @@ const SectorAnalysis = ({ topGainers, theme }) => {
       });
     });
   }
-  const sorted = Object.entries(sectorScores).filter(([_, s]) => s !== 0).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 4);
+  const sorted = Object.entries(sectorScores).filter(([_, s]) => s !== 0).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 6);
   return (
     <div className={`p-3 ${t.card} rounded-xl border ${t.border} mb-2.5`}>
       <div className={`text-xs font-semibold mb-2.5 ${t.text}`}>🏷️ Top Sektory</div>
@@ -1397,7 +1398,7 @@ const SectorAnalysis = ({ topGainers, theme }) => {
                 <span className={`text-[11px] font-semibold ${t.text}`}>{i + 1}. {sector}</span>
                 <span className={`text-[10px] font-bold ${score > 0 ? 'text-green-500' : 'text-red-500'}`}>{score > 0 ? '+' : ''}{score.toFixed(1)}%</span>
               </div>
-              <div className={`text-[8px] ${t.muted}`}>{sectorCoins[sector]?.slice(0, 3).map(c => c.name).join(', ')}</div>
+              <div className={`text-[8px] ${t.muted}`}>{sectorCoins[sector]?.slice(0, 4).map(c => c.name).join(', ')}</div>
             </div>
           ))}
         </div>
