@@ -559,132 +559,93 @@ const fetchPolygonData = async () => {
 // ============== MARKET STRUCTURE (Top Gainers/Losers) ==============
 const fetchMarketStructure = async () => {
   try {
-    console.log('Fetching market structure from Binance...');
+    console.log('Fetching market structure from CoinGecko...');
     
-    // Próbuj główny endpoint
-    let response;
-    try {
-      response = await fetch('https://api.binance.com/api/v3/ticker/24hr', {
-        method: 'GET',
-        headers: { 'Accept': 'application/json' }
-      });
-    } catch (fetchErr) {
-      console.warn('Direct Binance fetch failed, trying alternative:', fetchErr.message);
-      // Próbuj przez proxy jeśli CORS blokuje
-      response = await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=percent_change_24h_desc&per_page=100&sparkline=false');
-      if (response.ok) {
-        const cgData = await response.json();
-        const gainers = cgData.filter(c => c.price_change_percentage_24h > 0);
-        const losers = cgData.filter(c => c.price_change_percentage_24h < 0);
-        return {
-          topGainers: gainers.slice(0, 20).map(c => ({
-            name: c.symbol.toUpperCase() + 'USDT',
-            price: c.current_price,
-            change24h: c.price_change_percentage_24h,
-            volume: c.total_volume
-          })),
-          topLosers: losers.slice(-20).reverse().map(c => ({
-            name: c.symbol.toUpperCase() + 'USDT',
-            price: c.current_price,
-            change24h: c.price_change_percentage_24h,
-            volume: c.total_volume
-          })),
-          breadth: {
-            gainers: gainers.length,
-            losers: losers.length,
-            unchanged: 0,
-            total: cgData.length,
-            bullishPercent: (gainers.length / cgData.length * 100).toFixed(1)
-          }
-        };
-      }
-    }
+    // CoinGecko - pobierz top 250 coinów posortowanych po market cap
+    const response = await fetch(
+      'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&sparkline=false&price_change_percentage=24h'
+    );
     
-    if (!response || !response.ok) {
-      console.error('Binance ticker response not OK:', response?.status, response?.statusText);
-      throw new Error('Binance ticker error');
+    if (!response.ok) {
+      throw new Error(`CoinGecko error: ${response.status}`);
     }
     
     const data = await response.json();
     
     if (!Array.isArray(data) || data.length === 0) {
-      console.error('Binance returned empty or invalid data');
-      throw new Error('Invalid Binance data');
+      throw new Error('CoinGecko returned empty data');
     }
     
-    console.log('Binance ticker data received:', data.length, 'pairs');
+    console.log('CoinGecko data received:', data.length, 'coins');
     
-    // Filtruj tylko pary USDT i wyklucz stablecoiny
-    const stablecoins = ['BUSD', 'USDC', 'TUSD', 'FDUSD', 'DAI', 'USDP'];
-    const usdtPairs = data.filter(t => {
-      if (!t.symbol || !t.symbol.endsWith('USDT')) return false;
-      const base = t.symbol.replace('USDT', '');
-      if (stablecoins.includes(base)) return false;
-      if (parseFloat(t.quoteVolume || 0) < 1000000) return false; // min $1M volume
+    // Filtruj stablecoiny i coiny bez danych
+    const stablecoins = ['usdt', 'usdc', 'busd', 'dai', 'tusd', 'usdp', 'fdusd', 'usdd', 'frax', 'gusd', 'paxg'];
+    const validCoins = data.filter(c => {
+      if (!c.symbol || !c.price_change_percentage_24h) return false;
+      if (stablecoins.includes(c.symbol.toLowerCase())) return false;
+      if (c.total_volume < 1000000) return false; // min $1M volume
       return true;
     });
     
-    console.log('Filtered USDT pairs:', usdtPairs.length);
+    console.log('Filtered coins:', validCoins.length);
     
-    if (usdtPairs.length === 0) {
-      throw new Error('No valid USDT pairs found');
-    }
+    // Sortuj po zmianie procentowej (malejąco dla gainers)
+    const sortedByChange = [...validCoins].sort((a, b) => 
+      (b.price_change_percentage_24h || 0) - (a.price_change_percentage_24h || 0)
+    );
     
-    // Sortuj po zmianie procentowej
-    const sorted = usdtPairs.sort((a, b) => parseFloat(b.priceChangePercent || 0) - parseFloat(a.priceChangePercent || 0));
+    // Top gainers (pierwsze 20 z największym wzrostem)
+    const topGainers = sortedByChange
+      .filter(c => c.price_change_percentage_24h > 0)
+      .slice(0, 20)
+      .map(c => ({
+        name: c.symbol.toUpperCase(),
+        price: c.current_price,
+        change24h: c.price_change_percentage_24h,
+        volume: c.total_volume,
+        image: c.image
+      }));
     
-    // Top gainers i losers
-    const topGainers = sorted.slice(0, 20).map(t => ({
-      name: t.symbol,
-      price: parseFloat(t.lastPrice || 0),
-      change24h: parseFloat(t.priceChangePercent || 0),
-      volume: parseFloat(t.quoteVolume || 0)
-    }));
-    
-    const topLosers = sorted.slice(-20).reverse().map(t => ({
-      name: t.symbol,
-      price: parseFloat(t.lastPrice || 0),
-      change24h: parseFloat(t.priceChangePercent || 0),
-      volume: parseFloat(t.quoteVolume || 0)
-    }));
+    // Top losers (20 z największym spadkiem)
+    const topLosers = sortedByChange
+      .filter(c => c.price_change_percentage_24h < 0)
+      .slice(-20)
+      .reverse()
+      .map(c => ({
+        name: c.symbol.toUpperCase(),
+        price: c.current_price,
+        change24h: c.price_change_percentage_24h,
+        volume: c.total_volume,
+        image: c.image
+      }));
     
     // Market breadth
-    const gainers = usdtPairs.filter(t => parseFloat(t.priceChangePercent || 0) > 0).length;
-    const losers = usdtPairs.filter(t => parseFloat(t.priceChangePercent || 0) < 0).length;
-    const unchanged = usdtPairs.length - gainers - losers;
+    const gainersCount = validCoins.filter(c => c.price_change_percentage_24h > 0).length;
+    const losersCount = validCoins.filter(c => c.price_change_percentage_24h < 0).length;
+    const unchanged = validCoins.length - gainersCount - losersCount;
     
-    console.log('Market Structure result - gainers:', gainers, 'losers:', losers, 'topGainers:', topGainers.length);
+    console.log('Market Structure result - gainers:', gainersCount, 'losers:', losersCount, 'topGainers:', topGainers.length);
     
     return {
       topGainers,
       topLosers,
       breadth: {
-        gainers,
-        losers,
+        gainers: gainersCount,
+        losers: losersCount,
         unchanged,
-        total: usdtPairs.length,
-        bullishPercent: (gainers / Math.max(usdtPairs.length, 1) * 100).toFixed(1)
-      }
+        total: validCoins.length,
+        bullishPercent: (gainersCount / Math.max(validCoins.length, 1) * 100).toFixed(1)
+      },
+      source: 'coingecko'
     };
   } catch (error) {
     console.error('Market structure fetch error:', error);
-    // Fallback z realistycznymi przykładowymi danymi gdy wszystko zawiedzie
+    // Return null zamiast fake data - UI pokaże stan ładowania/błędu
     return {
-      topGainers: [
-        { name: 'SOLUSDT', price: 195.50, change24h: 8.5, volume: 2500000000 },
-        { name: 'AVAXUSDT', price: 42.30, change24h: 6.2, volume: 890000000 },
-        { name: 'LINKUSDT', price: 18.80, change24h: 5.1, volume: 650000000 },
-        { name: 'NEARUSDT', price: 6.25, change24h: 4.8, volume: 420000000 },
-        { name: 'INJUSDT', price: 35.60, change24h: 4.2, volume: 380000000 }
-      ],
-      topLosers: [
-        { name: 'DOGEUSDT', price: 0.125, change24h: -4.5, volume: 1200000000 },
-        { name: 'PEPEUSDT', price: 0.0000185, change24h: -3.8, volume: 890000000 },
-        { name: 'SHIBUSDT', price: 0.0000245, change24h: -3.2, volume: 560000000 },
-        { name: 'WIFUSDT', price: 2.85, change24h: -2.9, volume: 320000000 },
-        { name: 'FLOKIUSDT', price: 0.000195, change24h: -2.5, volume: 180000000 }
-      ],
-      breadth: { gainers: 85, losers: 75, unchanged: 10, total: 170, bullishPercent: '50.0' }
+      topGainers: [],
+      topLosers: [],
+      breadth: { gainers: 0, losers: 0, unchanged: 0, total: 0, bullishPercent: '0' },
+      error: error.message
     };
   }
 };
