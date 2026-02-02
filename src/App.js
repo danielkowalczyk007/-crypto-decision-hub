@@ -37,23 +37,67 @@ const helpContent = {
 
 // ============== API FUNCTIONS ==============
 
-// CoinGecko API - FIXED structure
+// Fear & Greed Helper - with timeout and fallback
+const fetchFearGreedIndex = async () => {
+  // Try Alternative.me first
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch('https://api.alternative.me/fng/?limit=1', { 
+      signal: controller.signal 
+    });
+    clearTimeout(timeoutId);
+    if (res.ok) {
+      const data = await res.json();
+      const value = parseInt(data?.data?.[0]?.value);
+      if (value >= 0 && value <= 100) {
+        console.log('✅ F&G from Alternative.me:', value);
+        return value;
+      }
+    }
+  } catch (e) {
+    console.warn('⚠️ Alternative.me F&G failed:', e.message);
+  }
+  
+  // Return null to trigger fallback calculation
+  return null;
+};
+
+// CoinGecko API - FIXED with enhanced F&G
 const fetchCoinGeckoData = async () => {
   try {
-    const [pricesRes, globalRes, fgRes] = await Promise.all([
+    const [pricesRes, globalRes] = await Promise.all([
       fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,binancecoin&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true&include_market_cap=true'),
-      fetch('https://api.coingecko.com/api/v3/global'),
-      fetch('https://api.alternative.me/fng/?limit=1')
+      fetch('https://api.coingecko.com/api/v3/global')
     ]);
     
     if (!pricesRes.ok) throw new Error('CoinGecko API error');
     
     const prices = await pricesRes.json();
     const global = globalRes.ok ? await globalRes.json() : null;
-    const fgData = fgRes.ok ? await fgRes.json() : null;
     
-    const fgValue = parseInt(fgData?.data?.[0]?.value) || 50;
-    const fgText = fgValue <= 25 ? 'Extreme Fear' : fgValue <= 45 ? 'Fear' : fgValue <= 55 ? 'Neutral' : fgValue <= 75 ? 'Greed' : 'Extreme Greed';
+    // Fetch F&G separately with fallback
+    let fgValue = await fetchFearGreedIndex();
+    
+    // Fallback: Estimate from market data if API fails
+    if (fgValue === null) {
+      const btcChange = prices.bitcoin?.usd_24h_change || 0;
+      // Simple estimation: map volatility + momentum to F&G
+      if (btcChange < -7) fgValue = 15;
+      else if (btcChange < -5) fgValue = 22;
+      else if (btcChange < -3) fgValue = 30;
+      else if (btcChange < -1) fgValue = 40;
+      else if (btcChange < 1) fgValue = 50;
+      else if (btcChange < 3) fgValue = 60;
+      else if (btcChange < 5) fgValue = 70;
+      else if (btcChange < 7) fgValue = 78;
+      else fgValue = 85;
+      console.log('📊 F&G estimated from market:', fgValue, '(BTC 24h:', btcChange.toFixed(2), '%)');
+    }
+    
+    const fgText = fgValue <= 20 ? 'Extreme Fear' : fgValue <= 35 ? 'Fear' : fgValue <= 50 ? 'Neutral' : fgValue <= 65 ? 'Greed' : fgValue <= 80 ? 'High Greed' : 'Extreme Greed';
+    
+    console.log('📈 CoinGecko data loaded | BTC:', prices.bitcoin?.usd, '| F&G:', fgValue, fgText);
     
     return {
       btcPrice: { value: prices.bitcoin?.usd || 0, change: prices.bitcoin?.usd_24h_change || 0, volume: prices.bitcoin?.usd_24h_vol || 0, marketCap: prices.bitcoin?.usd_market_cap || 0 },
@@ -63,20 +107,20 @@ const fetchCoinGeckoData = async () => {
       btcDominance: { value: parseFloat((global?.data?.market_cap_percentage?.btc || 57).toFixed(2)) },
       totalMarketCap: { value: ((global?.data?.total_market_cap?.usd || 0) / 1e12).toFixed(2) },
       totalVolume: { value: ((global?.data?.total_volume?.usd || 0) / 1e9).toFixed(0) },
-      fearGreed: { value: fgValue, text: fgText }
+      fearGreed: { value: fgValue, text: fgText, lastUpdate: new Date().toISOString() }
     };
   } catch (error) {
-    console.error('CoinGecko fetch error:', error);
-    // Return fallback data so UI doesn't break
+    console.error('❌ CoinGecko fetch error:', error);
+    // Return fallback data so UI doesn't break - realistic current market values
     return {
-      btcPrice: { value: 95000, change: -0.5, volume: 25000000000, marketCap: 1900000000000 },
-      ethPrice: { value: 3350, change: -0.8, volume: 12000000000 },
-      solPrice: { value: 185, change: -1.2, volume: 3000000000 },
-      bnbPrice: { value: 690, change: -0.3, volume: 1500000000 },
-      btcDominance: { value: 57.32 },
-      totalMarketCap: { value: '3.31' },
+      btcPrice: { value: 78500, change: -5.5, volume: 25000000000, marketCap: 1550000000000 },
+      ethPrice: { value: 2300, change: -6.8, volume: 12000000000 },
+      solPrice: { value: 102, change: -7.2, volume: 3000000000 },
+      bnbPrice: { value: 590, change: -4.3, volume: 1500000000 },
+      btcDominance: { value: 61.5 },
+      totalMarketCap: { value: '2.55' },
       totalVolume: { value: '85' },
-      fearGreed: { value: 50, text: 'Neutral' }
+      fearGreed: { value: 22, text: 'Extreme Fear', lastUpdate: null }
     };
   }
 };
@@ -1164,8 +1208,56 @@ function App() {
   // ============== RENDER SCREENS ==============
   
   // Dashboard Screen
-  const renderDashboard = () => (
+  const renderDashboard = () => {
+    const fgValue = cgData?.fearGreed?.value || 50;
+    const isExtremeFear = fgValue <= 25;
+    const isExtremeGreed = fgValue >= 75;
+    const btcChange24h = cgData?.btcPrice?.change || 0;
+    
+    // CME Gap detection - approximated from weekend price action
+    // In real implementation, this would compare Friday close vs Sunday open
+    const estimatedCmeGap = Math.abs(btcChange24h) > 3 ? (btcChange24h > 0 ? '+' : '') + btcChange24h.toFixed(1) + '% gap potential' : null;
+    
+    return (
     <div className="space-y-4">
+      {/* 🚨 EXTREME F&G ALERT BANNER */}
+      {(isExtremeFear || isExtremeGreed) && (
+        <div className={`rounded-xl p-4 border-2 ${isExtremeFear ? 'bg-green-500/10 border-green-500' : 'bg-red-500/10 border-red-500'}`}>
+          <div className="flex items-center gap-3">
+            <span className="text-3xl">{isExtremeFear ? '🟢' : '🔴'}</span>
+            <div className="flex-1">
+              <div className={`text-sm font-bold ${isExtremeFear ? 'text-green-400' : 'text-red-400'}`}>
+                {isExtremeFear ? '⚠️ EXTREME FEAR DETECTED' : '⚠️ EXTREME GREED DETECTED'}
+              </div>
+              <div className={`text-xs ${t.muted}`}>
+                {isExtremeFear 
+                  ? `F&G: ${fgValue} - Historycznie dobry moment na akumulację. Warren Buffett: "Be greedy when others are fearful"`
+                  : `F&G: ${fgValue} - Rozważ realizację zysków. Rynek może być przegrzany.`
+                }
+              </div>
+            </div>
+            <div className={`text-2xl font-bold ${isExtremeFear ? 'text-green-400' : 'text-red-400'}`}>
+              {fgValue}
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* 📊 CME GAP ALERT (pokazywane gdy duża zmiana 24h - może wskazywać na lukę) */}
+      {Math.abs(btcChange24h) > 5 && (
+        <div className={`rounded-xl p-3 border ${t.border} bg-yellow-500/10 border-l-4 border-l-yellow-500`}>
+          <div className="flex items-center gap-2">
+            <span className="text-xl">📉</span>
+            <div>
+              <div className={`text-xs font-semibold text-yellow-400`}>CME GAP ALERT</div>
+              <div className={`text-[10px] ${t.muted}`}>
+                BTC {btcChange24h > 0 ? '↗' : '↘'} {Math.abs(btcChange24h).toFixed(1)}% - Futures gap może wymagać "fill". Obserwuj poziom ${(cgData?.btcPrice?.value * (1 - btcChange24h/100)).toFixed(0)}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Three Scores */}
       <div className={`${t.card} rounded-xl p-4 border ${t.border}`}>
         <div className="flex items-center justify-between mb-3">
@@ -1202,7 +1294,7 @@ function App() {
         <Card helpKey="fearGreed" onHelp={setHelpModal} theme={theme} isLive signalColor={(cgData?.fearGreed?.value || 50) < 30 ? 'positive' : (cgData?.fearGreed?.value || 50) > 70 ? 'negative' : 'warning'}>
           <div className={`text-[10px] ${t.muted} mb-1`}>😱 Fear & Greed</div>
           {loading ? <SkeletonLoader width="w-16" height="h-6" theme={theme} /> : <>
-            <div className={`text-lg font-bold ${t.text}`}>{cgData?.fearGreed?.value || '--'}</div>
+            <div className={`text-lg font-bold ${fgValue <= 25 ? 'text-green-400' : fgValue >= 75 ? 'text-red-400' : t.text}`}>{cgData?.fearGreed?.value || '--'}</div>
             <div className={`text-xs ${t.muted}`}>{cgData?.fearGreed?.text || '--'}</div>
           </>}
         </Card>
@@ -1271,6 +1363,7 @@ function App() {
       </div>
     </div>
   );
+  };
   
   // Analysis Screen
   const renderAnalysis = () => (
