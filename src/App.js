@@ -39,8 +39,9 @@ const helpContent = {
 // ============== API FUNCTIONS ==============
 
 // Fear & Greed Helper - PARALLEL fetch with short timeouts
+// Current F&G ~44 (Fear) as of Feb 2026
 const fetchFearGreedIndex = async () => {
-  const TIMEOUT_MS = 2000; // 2 seconds max per source
+  const TIMEOUT_MS = 2500; // 2.5 seconds per source
   
   const fetchWithTimeout = async (url, sourceName, parseValue) => {
     try {
@@ -56,61 +57,59 @@ const fetchFearGreedIndex = async () => {
         const data = await res.json();
         const value = parseValue(data);
         if (value >= 0 && value <= 100) {
+          console.log(`✅ F&G from ${sourceName}:`, value);
           return { value, source: sourceName, isReal: true };
         }
       }
     } catch (e) {
-      // Silent fail - will be handled by Promise.allSettled
+      console.warn(`⚠️ ${sourceName} failed:`, e.message);
     }
     return null;
   };
   
-  // Run ALL sources in PARALLEL
+  // Run ALL sources in PARALLEL - ordered by reliability
   const sources = [
+    // SOURCE 1: Alternative.me - most reliable, updates daily
     fetchWithTimeout(
       'https://api.alternative.me/fng/?limit=1',
       'Alternative.me',
       (data) => parseInt(data?.data?.[0]?.value)
     ),
+    // SOURCE 2: CoinyBubble - FREE, Binance methodology, updates every minute!
+    fetchWithTimeout(
+      'https://coinybubble.com/api/index/current',
+      'CoinyBubble',
+      (data) => parseInt(data?.value || data?.index?.value || data?.current?.value)
+    ),
+    // SOURCE 3: CoinStats - reliable backup
     fetchWithTimeout(
       'https://api.coinstats.app/public/v1/fear-greed',
       'CoinStats',
       (data) => parseInt(data?.now?.value || data?.value)
     ),
+    // SOURCE 4: CoinGlass - may require API key now
     fetchWithTimeout(
       'https://open-api.coinglass.com/public/v2/index/fear-greed-history',
       'CoinGlass',
       (data) => parseInt(data?.data?.[0]?.value)
     ),
+    // SOURCE 5: Senticrypt - backup
     fetchWithTimeout(
       'https://api.senticrypt.com/v1/fear-greed.json',
       'Senticrypt',
       (data) => parseInt(data?.value || data?.fgi)
-    ),
-    // CoinMarketCap Fear & Greed (public endpoint)
-    fetchWithTimeout(
-      'https://api.coinmarketcap.com/data-api/v3/fear-and-greed/latest',
-      'CoinMarketCap',
-      (data) => parseInt(data?.data?.value)
-    ),
-    // Blockchain Center (alternative)
-    fetchWithTimeout(
-      'https://www.blockchaincenter.net/api/fear_greed',
-      'BlockchainCenter',
-      (data) => parseInt(data?.value || data?.current?.value)
     )
   ];
   
   // Wait for all with 3s total timeout
   const results = await Promise.race([
     Promise.allSettled(sources),
-    new Promise(resolve => setTimeout(() => resolve([]), 3000)) // 3s max total
+    new Promise(resolve => setTimeout(() => resolve([]), 3000))
   ]);
   
   // Find first successful result
   for (const result of results) {
     if (result?.status === 'fulfilled' && result.value) {
-      console.log(`✅ F&G from ${result.value.source}:`, result.value.value);
       return result.value;
     }
   }
@@ -119,15 +118,36 @@ const fetchFearGreedIndex = async () => {
   return null;
 };
 
-// Fallback F&G calculation - CONSERVATIVE approach
+// Fallback F&G calculation - ENHANCED with Binance derivatives data
 // Real F&G uses: volatility, momentum, social sentiment, google trends
-// We only have price data, so we estimate LOWER to be safe
-const calculateFearGreedFromMarket = (prices, global) => {
+// We use price data + Binance funding/L-S ratio for better estimate
+const calculateFearGreedFromMarket = async (prices, global) => {
   const btcChange = prices.bitcoin?.usd_24h_change || 0;
   const ethChange = prices.ethereum?.usd_24h_change || 0;
   const solChange = prices.solana?.usd_24h_change || 0;
   const bnbChange = prices.binancecoin?.usd_24h_change || 0;
   const btcDominance = global?.data?.market_cap_percentage?.btc || 57;
+  
+  // Quick fetch Binance derivatives data for better estimate
+  let funding = 0.01; // neutral default
+  let lsRatio = 1.0;  // neutral default
+  try {
+    const [fundingRes, lsRes] = await Promise.all([
+      fetch('https://fapi.binance.com/fapi/v1/fundingRate?symbol=BTCUSDT&limit=1', { cache: 'no-store' }),
+      fetch('https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=1h&limit=1', { cache: 'no-store' })
+    ]);
+    if (fundingRes.ok) {
+      const f = await fundingRes.json();
+      funding = parseFloat(f[0]?.fundingRate || 0) * 100;
+    }
+    if (lsRes.ok) {
+      const ls = await lsRes.json();
+      lsRatio = parseFloat(ls[0]?.longShortRatio || 1);
+    }
+    console.log(`📊 Binance derivatives: Funding ${funding.toFixed(4)}% | L/S ${lsRatio.toFixed(2)}`);
+  } catch (e) {
+    console.warn('⚠️ Binance derivatives fetch failed, using defaults');
+  }
   
   // Weighted average - ETH/SOL are high-beta risk indicators
   const avgChange = (btcChange * 0.30 + ethChange * 0.30 + solChange * 0.25 + bnbChange * 0.15);
@@ -143,7 +163,6 @@ const calculateFearGreedFromMarket = (prices, global) => {
   const volatility = bestChange - worstChange;
   
   // START WITH CONSERVATIVE BASE - 30 (Fear zone)
-  // Only real positive news pushes above 50
   let fgValue = 30;
   
   // Base from avg change - SHIFTED DOWN
@@ -153,7 +172,7 @@ const calculateFearGreedFromMarket = (prices, global) => {
   else if (avgChange < -3) fgValue = 22;
   else if (avgChange < -1) fgValue = 28;
   else if (avgChange < 0) fgValue = 32;
-  else if (avgChange < 1) fgValue = 35;  // Small positive = still cautious
+  else if (avgChange < 1) fgValue = 35;
   else if (avgChange < 2) fgValue = 38;
   else if (avgChange < 3) fgValue = 42;
   else if (avgChange < 5) fgValue = 48;
@@ -191,15 +210,29 @@ const calculateFearGreedFromMarket = (prices, global) => {
   else if (volatility > 7) fgValue -= 3;
   else if (volatility > 5) fgValue -= 2;
   
+  // PENALTY 6: Binance Funding Rate - high = overleveraged longs (max -8)
+  if (funding > 0.05) fgValue -= 8;      // Very high funding = greed/overleveraged
+  else if (funding > 0.03) fgValue -= 5;
+  else if (funding > 0.02) fgValue -= 3;
+  else if (funding < -0.01) fgValue += 5; // Negative funding = fear/shorts paying
+  else if (funding < 0) fgValue += 2;
+  
+  // PENALTY 7: Long/Short Ratio - high = too many longs (max -6)
+  if (lsRatio > 2.0) fgValue -= 6;        // Too many longs = greed
+  else if (lsRatio > 1.5) fgValue -= 4;
+  else if (lsRatio > 1.3) fgValue -= 2;
+  else if (lsRatio < 0.8) fgValue += 4;   // More shorts = fear
+  else if (lsRatio < 0.9) fgValue += 2;
+  
   // BONUS: Only for clearly bullish conditions
   if (redCoins === 0 && avgChange > 3) fgValue += 5;
-  if (ethVsBtc > 2 && avgChange > 0) fgValue += 3; // ETH leading = risk-on
+  if (ethVsBtc > 2 && avgChange > 0) fgValue += 3;
   
   // Clamp to valid range
   fgValue = Math.max(5, Math.min(85, Math.round(fgValue)));
   
   console.log('📊 F&G ESTIMATED:', fgValue, 
-    `| Avg: ${avgChange.toFixed(1)}% | Worst: ${worstChange.toFixed(1)}% | Red: ${redCoins}/4 | Vol: ${volatility.toFixed(1)}% | BTC.D: ${btcDominance.toFixed(1)}%`);
+    `| Avg: ${avgChange.toFixed(1)}% | Red: ${redCoins}/4 | Funding: ${funding.toFixed(3)}% | L/S: ${lsRatio.toFixed(2)} | BTC.D: ${btcDominance.toFixed(1)}%`);
   
   return fgValue;
 };
@@ -319,8 +352,8 @@ const fetchCoinGeckoData = async () => {
       fgValue = fgResult.value;
       fgSource = fgResult.source;
     } else {
-      // Fallback: Calculate from market data
-      fgValue = calculateFearGreedFromMarket(prices, global);
+      // Fallback: Calculate from market data + Binance derivatives
+      fgValue = await calculateFearGreedFromMarket(prices, global);
       fgSource = 'Estimated';
     }
     
