@@ -38,121 +38,90 @@ const helpContent = {
 
 // ============== API FUNCTIONS ==============
 
-// Fear & Greed Helper - Multiple API sources with fallback chain
+// Fear & Greed Helper - PARALLEL fetch with short timeouts
 const fetchFearGreedIndex = async () => {
-  const timeout = (ms) => new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms));
+  const TIMEOUT_MS = 2000; // 2 seconds max per source
   
-  // SOURCE 1: Alternative.me (most popular)
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch('https://api.alternative.me/fng/?limit=1', { 
-      signal: controller.signal,
-      headers: { 'Accept': 'application/json' }
-    });
-    clearTimeout(timeoutId);
-    if (res.ok) {
-      const data = await res.json();
-      const value = parseInt(data?.data?.[0]?.value);
-      if (value >= 0 && value <= 100) {
-        console.log('✅ F&G from Alternative.me:', value);
-        return { value, source: 'Alternative.me', isReal: true };
+  const fetchWithTimeout = async (url, sourceName, parseValue) => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+      const res = await fetch(url, { 
+        signal: controller.signal,
+        headers: { 'Accept': 'application/json' },
+        cache: 'no-store'
+      });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        const data = await res.json();
+        const value = parseValue(data);
+        if (value >= 0 && value <= 100) {
+          return { value, source: sourceName, isReal: true };
+        }
       }
+    } catch (e) {
+      // Silent fail - will be handled by Promise.allSettled
     }
-  } catch (e) {
-    console.warn('⚠️ Alternative.me failed:', e.message);
+    return null;
+  };
+  
+  // Run ALL sources in PARALLEL
+  const sources = [
+    fetchWithTimeout(
+      'https://api.alternative.me/fng/?limit=1',
+      'Alternative.me',
+      (data) => parseInt(data?.data?.[0]?.value)
+    ),
+    fetchWithTimeout(
+      'https://api.coinstats.app/public/v1/fear-greed',
+      'CoinStats',
+      (data) => parseInt(data?.now?.value || data?.value)
+    ),
+    fetchWithTimeout(
+      'https://open-api.coinglass.com/public/v2/index/fear-greed-history',
+      'CoinGlass',
+      (data) => parseInt(data?.data?.[0]?.value)
+    ),
+    fetchWithTimeout(
+      'https://api.senticrypt.com/v1/fear-greed.json',
+      'Senticrypt',
+      (data) => parseInt(data?.value || data?.fgi)
+    ),
+    // CoinMarketCap Fear & Greed (public endpoint)
+    fetchWithTimeout(
+      'https://api.coinmarketcap.com/data-api/v3/fear-and-greed/latest',
+      'CoinMarketCap',
+      (data) => parseInt(data?.data?.value)
+    ),
+    // Blockchain Center (alternative)
+    fetchWithTimeout(
+      'https://www.blockchaincenter.net/api/fear_greed',
+      'BlockchainCenter',
+      (data) => parseInt(data?.value || data?.current?.value)
+    )
+  ];
+  
+  // Wait for all with 3s total timeout
+  const results = await Promise.race([
+    Promise.allSettled(sources),
+    new Promise(resolve => setTimeout(() => resolve([]), 3000)) // 3s max total
+  ]);
+  
+  // Find first successful result
+  for (const result of results) {
+    if (result?.status === 'fulfilled' && result.value) {
+      console.log(`✅ F&G from ${result.value.source}:`, result.value.value);
+      return result.value;
+    }
   }
   
-  // SOURCE 2: CoinStats API
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch('https://api.coinstats.app/public/v1/fear-greed', {
-      signal: controller.signal,
-      headers: { 'Accept': 'application/json' }
-    });
-    clearTimeout(timeoutId);
-    if (res.ok) {
-      const data = await res.json();
-      const value = parseInt(data?.now?.value || data?.value);
-      if (value >= 0 && value <= 100) {
-        console.log('✅ F&G from CoinStats:', value);
-        return { value, source: 'CoinStats', isReal: true };
-      }
-    }
-  } catch (e) {
-    console.warn('⚠️ CoinStats failed:', e.message);
-  }
-  
-  // SOURCE 3: CoinGlass Fear & Greed
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch('https://open-api.coinglass.com/public/v2/index/fear-greed-history', {
-      signal: controller.signal,
-      headers: { 'Accept': 'application/json' }
-    });
-    clearTimeout(timeoutId);
-    if (res.ok) {
-      const data = await res.json();
-      const latestValue = data?.data?.[0];
-      const value = parseInt(latestValue?.value || latestValue?.price);
-      if (value >= 0 && value <= 100) {
-        console.log('✅ F&G from CoinGlass:', value);
-        return { value, source: 'CoinGlass', isReal: true };
-      }
-    }
-  } catch (e) {
-    console.warn('⚠️ CoinGlass failed:', e.message);
-  }
-  
-  // SOURCE 4: Senticrypt API
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch('https://api.senticrypt.com/v1/fear-greed.json', {
-      signal: controller.signal,
-      headers: { 'Accept': 'application/json' }
-    });
-    clearTimeout(timeoutId);
-    if (res.ok) {
-      const data = await res.json();
-      const value = parseInt(data?.value || data?.fgi);
-      if (value >= 0 && value <= 100) {
-        console.log('✅ F&G from Senticrypt:', value);
-        return { value, source: 'Senticrypt', isReal: true };
-      }
-    }
-  } catch (e) {
-    console.warn('⚠️ Senticrypt failed:', e.message);
-  }
-  
-  // SOURCE 5: CFGI.io
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch('https://cfgi.io/api/fear-greed', {
-      signal: controller.signal,
-      headers: { 'Accept': 'application/json' }
-    });
-    clearTimeout(timeoutId);
-    if (res.ok) {
-      const data = await res.json();
-      const value = parseInt(data?.value || data?.current?.value);
-      if (value >= 0 && value <= 100) {
-        console.log('✅ F&G from CFGI.io:', value);
-        return { value, source: 'CFGI.io', isReal: true };
-      }
-    }
-  } catch (e) {
-    console.warn('⚠️ CFGI.io failed:', e.message);
-  }
-  
-  console.warn('❌ All F&G API sources failed - using fallback');
+  console.warn('❌ All F&G API sources failed - using calculation');
   return null;
 };
 
-// Fallback F&G calculation from Binance/CoinGecko market data
+// Fallback F&G calculation - CONSERVATIVE approach
+// Real F&G uses: volatility, momentum, social sentiment, google trends
+// We only have price data, so we estimate LOWER to be safe
 const calculateFearGreedFromMarket = (prices, global) => {
   const btcChange = prices.bitcoin?.usd_24h_change || 0;
   const ethChange = prices.ethereum?.usd_24h_change || 0;
@@ -160,8 +129,8 @@ const calculateFearGreedFromMarket = (prices, global) => {
   const bnbChange = prices.binancecoin?.usd_24h_change || 0;
   const btcDominance = global?.data?.market_cap_percentage?.btc || 57;
   
-  // Weighted average - ETH gets more weight as risk indicator
-  const avgChange = (btcChange * 0.35 + ethChange * 0.35 + solChange * 0.15 + bnbChange * 0.15);
+  // Weighted average - ETH/SOL are high-beta risk indicators
+  const avgChange = (btcChange * 0.30 + ethChange * 0.30 + solChange * 0.25 + bnbChange * 0.15);
   
   // Find worst performer (panic indicator)
   const worstChange = Math.min(btcChange, ethChange, solChange, bnbChange);
@@ -169,49 +138,68 @@ const calculateFearGreedFromMarket = (prices, global) => {
   // Count how many coins are down
   const redCoins = [btcChange, ethChange, solChange, bnbChange].filter(c => c < 0).length;
   
-  // IMPORTANT: F&G is NOT just about 24h change!
-  // Real F&G includes: volatility, volume, social sentiment, google trends, dominance
-  // Since we can't calculate all that, we use a CONSERVATIVE base value
-  // and only adjust for extreme market conditions
+  // Volatility proxy - spread between best and worst
+  const bestChange = Math.max(btcChange, ethChange, solChange, bnbChange);
+  const volatility = bestChange - worstChange;
   
-  let fgValue = 35; // Conservative base (Fear zone) when API fails
+  // START WITH CONSERVATIVE BASE - 30 (Fear zone)
+  // Only real positive news pushes above 50
+  let fgValue = 30;
   
-  // Only move to extreme values when market really shows it
-  if (avgChange < -8) fgValue = 10;
-  else if (avgChange < -6) fgValue = 15;
-  else if (avgChange < -4) fgValue = 20;
-  else if (avgChange < -2) fgValue = 28;
-  else if (avgChange < 0) fgValue = 35;
-  else if (avgChange < 2) fgValue = 40;
-  else if (avgChange < 4) fgValue = 48;
-  else if (avgChange < 6) fgValue = 55;
-  else if (avgChange < 8) fgValue = 65;
+  // Base from avg change - SHIFTED DOWN
+  if (avgChange < -10) fgValue = 5;
+  else if (avgChange < -7) fgValue = 10;
+  else if (avgChange < -5) fgValue = 15;
+  else if (avgChange < -3) fgValue = 22;
+  else if (avgChange < -1) fgValue = 28;
+  else if (avgChange < 0) fgValue = 32;
+  else if (avgChange < 1) fgValue = 35;  // Small positive = still cautious
+  else if (avgChange < 2) fgValue = 38;
+  else if (avgChange < 3) fgValue = 42;
+  else if (avgChange < 5) fgValue = 48;
+  else if (avgChange < 7) fgValue = 55;
+  else if (avgChange < 10) fgValue = 65;
   else fgValue = 75;
   
-  // ADJUSTMENT 1: Worst performer impact (fear indicator)
-  if (worstChange < -8) fgValue -= 10;
+  // PENALTY 1: Worst performer (max -12)
+  if (worstChange < -10) fgValue -= 12;
+  else if (worstChange < -7) fgValue -= 9;
   else if (worstChange < -5) fgValue -= 6;
-  else if (worstChange < -3) fgValue -= 3;
+  else if (worstChange < -3) fgValue -= 4;
+  else if (worstChange < -1) fgValue -= 2;
   
-  // ADJUSTMENT 2: Multiple coins red = fear
-  if (redCoins >= 3) fgValue -= 5;
-  else if (redCoins >= 2) fgValue -= 2;
+  // PENALTY 2: Multiple coins red (max -8)
+  if (redCoins === 4) fgValue -= 8;
+  else if (redCoins === 3) fgValue -= 5;
+  else if (redCoins === 2) fgValue -= 3;
+  else if (redCoins === 1) fgValue -= 1;
   
-  // ADJUSTMENT 3: ETH underperforming BTC = risk-off sentiment
+  // PENALTY 3: ETH underperforming BTC = risk-off (max -8)
   const ethVsBtc = ethChange - btcChange;
-  if (ethVsBtc < -4) fgValue -= 6;
+  if (ethVsBtc < -5) fgValue -= 8;
+  else if (ethVsBtc < -3) fgValue -= 5;
   else if (ethVsBtc < -2) fgValue -= 3;
+  else if (ethVsBtc < -1) fgValue -= 1;
   
-  // ADJUSTMENT 4: High BTC dominance = flight to safety (bearish for alts)
-  if (btcDominance > 60) fgValue -= 5;
+  // PENALTY 4: High BTC dominance = flight to safety (max -6)
+  if (btcDominance > 62) fgValue -= 6;
+  else if (btcDominance > 60) fgValue -= 4;
   else if (btcDominance > 58) fgValue -= 2;
   
-  // Clamp to valid range
-  fgValue = Math.max(10, Math.min(85, Math.round(fgValue)));
+  // PENALTY 5: High volatility = uncertainty (max -5)
+  if (volatility > 10) fgValue -= 5;
+  else if (volatility > 7) fgValue -= 3;
+  else if (volatility > 5) fgValue -= 2;
   
-  console.log('📊 F&G calculated (ESTIMATED):', fgValue, 
-    `| BTC: ${btcChange.toFixed(1)}% | ETH: ${ethChange.toFixed(1)}% | Avg: ${avgChange.toFixed(1)}%`,
-    `| Worst: ${worstChange.toFixed(1)}% | Red: ${redCoins}/4 | BTC.D: ${btcDominance.toFixed(1)}%`);
+  // BONUS: Only for clearly bullish conditions
+  if (redCoins === 0 && avgChange > 3) fgValue += 5;
+  if (ethVsBtc > 2 && avgChange > 0) fgValue += 3; // ETH leading = risk-on
+  
+  // Clamp to valid range
+  fgValue = Math.max(5, Math.min(85, Math.round(fgValue)));
+  
+  console.log('📊 F&G ESTIMATED:', fgValue, 
+    `| Avg: ${avgChange.toFixed(1)}% | Worst: ${worstChange.toFixed(1)}% | Red: ${redCoins}/4 | Vol: ${volatility.toFixed(1)}% | BTC.D: ${btcDominance.toFixed(1)}%`);
   
   return fgValue;
 };
