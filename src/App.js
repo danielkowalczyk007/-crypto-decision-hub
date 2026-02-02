@@ -192,20 +192,87 @@ const calculateFearGreedFromMarket = (prices, global) => {
   return fgValue;
 };
 
-// CoinGecko API - FIXED with enhanced F&G
+// Binance Spot API - PRIMARY source for real-time prices
+const fetchBinancePrices = async () => {
+  try {
+    const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT'];
+    const responses = await Promise.all(
+      symbols.map(symbol => 
+        fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`)
+          .then(r => r.ok ? r.json() : null)
+          .catch(() => null)
+      )
+    );
+    
+    const [btc, eth, sol, bnb] = responses;
+    
+    if (!btc || !eth) {
+      console.warn('⚠️ Binance prices incomplete');
+      return null;
+    }
+    
+    console.log('✅ Binance prices loaded | BTC:', parseFloat(btc.lastPrice).toFixed(2));
+    
+    return {
+      bitcoin: {
+        usd: parseFloat(btc.lastPrice),
+        usd_24h_change: parseFloat(btc.priceChangePercent),
+        usd_24h_vol: parseFloat(btc.quoteVolume)
+      },
+      ethereum: {
+        usd: parseFloat(eth.lastPrice),
+        usd_24h_change: parseFloat(eth.priceChangePercent),
+        usd_24h_vol: parseFloat(eth.quoteVolume)
+      },
+      solana: sol ? {
+        usd: parseFloat(sol.lastPrice),
+        usd_24h_change: parseFloat(sol.priceChangePercent),
+        usd_24h_vol: parseFloat(sol.quoteVolume)
+      } : null,
+      binancecoin: bnb ? {
+        usd: parseFloat(bnb.lastPrice),
+        usd_24h_change: parseFloat(bnb.priceChangePercent),
+        usd_24h_vol: parseFloat(bnb.quoteVolume)
+      } : null
+    };
+  } catch (e) {
+    console.warn('⚠️ Binance prices failed:', e.message);
+    return null;
+  }
+};
+
+// Combined data fetch - Binance prices + CoinGecko global data + F&G
 const fetchCoinGeckoData = async () => {
   try {
-    const [pricesRes, globalRes] = await Promise.all([
-      fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,binancecoin&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true&include_market_cap=true'),
-      fetch('https://api.coingecko.com/api/v3/global')
-    ]);
+    // Try Binance first for real-time prices
+    let prices = await fetchBinancePrices();
+    let priceSource = 'Binance';
     
-    if (!pricesRes.ok) throw new Error('CoinGecko API error');
+    // Fallback to CoinGecko if Binance fails
+    if (!prices) {
+      console.log('🔄 Falling back to CoinGecko for prices...');
+      const pricesRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,binancecoin&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true&include_market_cap=true');
+      if (pricesRes.ok) {
+        prices = await pricesRes.json();
+        priceSource = 'CoinGecko';
+        console.log('✅ CoinGecko prices loaded | BTC:', prices.bitcoin?.usd);
+      }
+    }
     
-    const prices = await pricesRes.json();
-    const global = globalRes.ok ? await globalRes.json() : null;
+    // Always get global data from CoinGecko (dominance, market cap)
+    let global = null;
+    try {
+      const globalRes = await fetch('https://api.coingecko.com/api/v3/global');
+      if (globalRes.ok) {
+        global = await globalRes.json();
+      }
+    } catch (e) {
+      console.warn('⚠️ CoinGecko global data failed');
+    }
     
-    // Fetch F&G from API first
+    if (!prices) throw new Error('All price sources failed');
+    
+    // Fetch F&G from API
     let fgResult = await fetchFearGreedIndex();
     let fgValue, fgSource;
     
@@ -221,30 +288,32 @@ const fetchCoinGeckoData = async () => {
     const fgText = fgValue <= 20 ? 'Extreme Fear' : fgValue <= 35 ? 'Fear' : fgValue <= 50 ? 'Neutral' : fgValue <= 65 ? 'Greed' : fgValue <= 80 ? 'High Greed' : 'Extreme Greed';
     const isRealData = fgResult?.isReal || false;
     
-    console.log('📈 CoinGecko data loaded | BTC:', prices.bitcoin?.usd, '| F&G:', fgValue, fgText, '| Source:', fgSource, isRealData ? '(API)' : '(Calculated)');
+    console.log(`📈 Data loaded [${priceSource}] | BTC: $${prices.bitcoin?.usd?.toFixed?.(2) || prices.bitcoin?.usd} | F&G: ${fgValue} ${fgText}`);
     
     return {
-      btcPrice: { value: prices.bitcoin?.usd || 0, change: prices.bitcoin?.usd_24h_change || 0, volume: prices.bitcoin?.usd_24h_vol || 0, marketCap: prices.bitcoin?.usd_market_cap || 0 },
+      btcPrice: { value: prices.bitcoin?.usd || 0, change: prices.bitcoin?.usd_24h_change || 0, volume: prices.bitcoin?.usd_24h_vol || 0, marketCap: prices.bitcoin?.usd_market_cap || 0, source: priceSource },
       ethPrice: { value: prices.ethereum?.usd || 0, change: prices.ethereum?.usd_24h_change || 0, volume: prices.ethereum?.usd_24h_vol || 0 },
       solPrice: { value: prices.solana?.usd || 0, change: prices.solana?.usd_24h_change || 0, volume: prices.solana?.usd_24h_vol || 0 },
       bnbPrice: { value: prices.binancecoin?.usd || 0, change: prices.binancecoin?.usd_24h_change || 0, volume: prices.binancecoin?.usd_24h_vol || 0 },
       btcDominance: { value: parseFloat((global?.data?.market_cap_percentage?.btc || 57).toFixed(2)) },
       totalMarketCap: { value: ((global?.data?.total_market_cap?.usd || 0) / 1e12).toFixed(2) },
       totalVolume: { value: ((global?.data?.total_volume?.usd || 0) / 1e9).toFixed(0) },
-      fearGreed: { value: fgValue, text: fgText, source: fgSource, isReal: isRealData, lastUpdate: new Date().toISOString() }
+      fearGreed: { value: fgValue, text: fgText, source: fgSource, isReal: isRealData, lastUpdate: new Date().toISOString() },
+      priceSource: priceSource
     };
   } catch (error) {
-    console.error('❌ CoinGecko fetch error:', error);
-    // Return fallback data so UI doesn't break - realistic current market values
+    console.error('❌ All data sources failed:', error);
+    // Return fallback data so UI doesn't break
     return {
-      btcPrice: { value: 78500, change: -5.5, volume: 25000000000, marketCap: 1550000000000 },
-      ethPrice: { value: 2300, change: -6.8, volume: 12000000000 },
-      solPrice: { value: 102, change: -7.2, volume: 3000000000 },
-      bnbPrice: { value: 590, change: -4.3, volume: 1500000000 },
+      btcPrice: { value: 78100, change: -2.5, volume: 25000000000, marketCap: 1550000000000, source: 'Fallback' },
+      ethPrice: { value: 2200, change: -7.5, volume: 12000000000 },
+      solPrice: { value: 100, change: -3.5, volume: 3000000000 },
+      bnbPrice: { value: 750, change: -3.0, volume: 1500000000 },
       btcDominance: { value: 61.5 },
       totalMarketCap: { value: '2.55' },
       totalVolume: { value: '85' },
-      fearGreed: { value: 22, text: 'Extreme Fear', source: 'Fallback', isReal: false, lastUpdate: null }
+      fearGreed: { value: 22, text: 'Extreme Fear', source: 'Fallback', isReal: false, lastUpdate: null },
+      priceSource: 'Fallback'
     };
   }
 };
@@ -1413,6 +1482,9 @@ function App() {
           {loading ? <SkeletonLoader width="w-24" height="h-6" theme={theme} /> : <>
             <div className={`text-lg font-bold ${t.text}`}>{formatPrice(cgData?.btcPrice?.value)}</div>
             <div className={`text-xs font-semibold ${(cgData?.btcPrice?.change || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatChange(cgData?.btcPrice?.change)}</div>
+            <div className={`text-[8px] ${cgData?.priceSource === 'Binance' ? 'text-yellow-500' : 'text-blue-400'} mt-0.5`}>
+              {cgData?.priceSource === 'Binance' ? '⚡ Binance' : cgData?.priceSource === 'CoinGecko' ? '🦎 CoinGecko' : '⚠️ Fallback'}
+            </div>
           </>}
         </Card>
         <Card helpKey="fearGreed" onHelp={setHelpModal} theme={theme} isLive signalColor={(cgData?.fearGreed?.value || 50) < 30 ? 'positive' : (cgData?.fearGreed?.value || 50) > 70 ? 'negative' : 'warning'}>
