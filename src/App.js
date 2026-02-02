@@ -21,6 +21,7 @@ const helpContent = {
   btcPrice: { title: 'Bitcoin Price', emoji: '₿', description: 'Current Bitcoin price in USD with 24h change percentage.', interpretation: [{ condition: '24h > +5%', signal: 'bullish', text: '🟢 Strong momentum' }, { condition: '24h < -5%', signal: 'bearish', text: '🔴 Correction phase' }], tip: 'Watch for volume confirmation on big moves.', source: 'CoinGecko API' },
   ethPrice: { title: 'Ethereum Price', emoji: 'Ξ', description: 'Current Ethereum price in USD with 24h change.', interpretation: [{ condition: 'ETH outperforms BTC', signal: 'bullish', text: '🟢 Altseason signal' }], tip: 'Monitor ETH/BTC ratio for altseason signals.', source: 'CoinGecko API' },
   solPrice: { title: 'Solana Price', emoji: '◎', description: 'Current Solana price - key L1 competitor.', interpretation: [{ condition: 'SOL > +10%', signal: 'bullish', text: '🟢 Alt momentum' }], tip: 'High beta asset - amplifies market moves.', source: 'CoinGecko API' },
+  bnbPrice: { title: 'BNB Price', emoji: '◆', description: 'Binance Coin price - exchange token & BSC gas.', interpretation: [{ condition: 'BNB stable', signal: 'neutral', text: '🟡 Exchange stable' }, { condition: 'BNB rising', signal: 'bullish', text: '🟢 Exchange momentum' }], tip: 'Tied to Binance ecosystem health.', source: 'CoinGecko API' },
   fearGreed: { title: 'Fear & Greed Index', emoji: '😱', description: 'Market sentiment indicator (0-100).', interpretation: [{ condition: '< 25', signal: 'bullish', text: '🟢 Extreme Fear = Buy opportunity' }, { condition: '25-45', signal: 'neutral', text: '🟡 Fear - cautious accumulation' }, { condition: '45-55', signal: 'neutral', text: '⚪ Neutral' }, { condition: '55-75', signal: 'warning', text: '🟠 Greed - take profits' }, { condition: '> 75', signal: 'bearish', text: '🔴 Extreme Greed = Sell signal' }], tip: 'Contrarian indicator - buy fear, sell greed.', source: 'Alternative.me' },
   btcDominance: { title: 'BTC Dominance', emoji: '👑', description: 'Bitcoin market cap as % of total crypto market.', interpretation: [{ condition: '> 55%', signal: 'bearish', text: '🔴 BTC season - alts underperform' }, { condition: '45-55%', signal: 'neutral', text: '🟡 Balanced market' }, { condition: '< 45%', signal: 'bullish', text: '🟢 Altseason - alts outperform' }], tip: 'Falling dominance = money flowing to alts.', source: 'CoinGecko API' },
   fundingRate: { title: 'Funding Rate', emoji: '💰', description: 'Perpetual futures funding rate (8h).', interpretation: [{ condition: '> 0.05%', signal: 'bearish', text: '🔴 Overleveraged longs' }, { condition: '0.01-0.05%', signal: 'neutral', text: '🟡 Normal bullish' }, { condition: '-0.01 to 0.01%', signal: 'neutral', text: '⚪ Neutral' }, { condition: '< -0.01%', signal: 'bullish', text: '🟢 Shorts paying - squeeze potential' }], tip: 'Extreme funding often precedes reversals.', source: 'Binance Futures API' },
@@ -83,41 +84,19 @@ const fetchFearGreedIndex = async () => {
     console.warn('⚠️ CoinStats failed:', e.message);
   }
   
-  // SOURCE 3: CoinyBubble (Binance methodology)
+  // SOURCE 3: CoinGlass Fear & Greed
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch('https://api.coinybubble.com/api/v1/index/current', {
+    const res = await fetch('https://open-api.coinglass.com/public/v2/index/fear-greed-history', {
       signal: controller.signal,
       headers: { 'Accept': 'application/json' }
     });
     clearTimeout(timeoutId);
     if (res.ok) {
       const data = await res.json();
-      const value = parseInt(data?.value || data?.index);
-      if (value >= 0 && value <= 100) {
-        console.log('✅ F&G from CoinyBubble:', value);
-        return { value, source: 'CoinyBubble', isReal: true };
-      }
-    }
-  } catch (e) {
-    console.warn('⚠️ CoinyBubble failed:', e.message);
-  }
-  
-  // SOURCE 4: CoinGlass (requires different parsing)
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch('https://fapi.coinglass.com/api/index/fearGreedHistory?interval=0', {
-      signal: controller.signal,
-      headers: { 'Accept': 'application/json' }
-    });
-    clearTimeout(timeoutId);
-    if (res.ok) {
-      const data = await res.json();
-      // CoinGlass returns array with latest value
-      const latestValue = data?.data?.[data.data.length - 1];
-      const value = parseInt(latestValue?.value || latestValue);
+      const latestValue = data?.data?.[0];
+      const value = parseInt(latestValue?.value || latestValue?.price);
       if (value >= 0 && value <= 100) {
         console.log('✅ F&G from CoinGlass:', value);
         return { value, source: 'CoinGlass', isReal: true };
@@ -127,8 +106,49 @@ const fetchFearGreedIndex = async () => {
     console.warn('⚠️ CoinGlass failed:', e.message);
   }
   
-  // All API sources failed - return null for fallback calculation
-  console.warn('❌ All F&G API sources failed - will use market calculation');
+  // SOURCE 4: Senticrypt API
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch('https://api.senticrypt.com/v1/fear-greed.json', {
+      signal: controller.signal,
+      headers: { 'Accept': 'application/json' }
+    });
+    clearTimeout(timeoutId);
+    if (res.ok) {
+      const data = await res.json();
+      const value = parseInt(data?.value || data?.fgi);
+      if (value >= 0 && value <= 100) {
+        console.log('✅ F&G from Senticrypt:', value);
+        return { value, source: 'Senticrypt', isReal: true };
+      }
+    }
+  } catch (e) {
+    console.warn('⚠️ Senticrypt failed:', e.message);
+  }
+  
+  // SOURCE 5: CFGI.io
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch('https://cfgi.io/api/fear-greed', {
+      signal: controller.signal,
+      headers: { 'Accept': 'application/json' }
+    });
+    clearTimeout(timeoutId);
+    if (res.ok) {
+      const data = await res.json();
+      const value = parseInt(data?.value || data?.current?.value);
+      if (value >= 0 && value <= 100) {
+        console.log('✅ F&G from CFGI.io:', value);
+        return { value, source: 'CFGI.io', isReal: true };
+      }
+    }
+  } catch (e) {
+    console.warn('⚠️ CFGI.io failed:', e.message);
+  }
+  
+  console.warn('❌ All F&G API sources failed - using fallback');
   return null;
 };
 
@@ -149,69 +169,82 @@ const calculateFearGreedFromMarket = (prices, global) => {
   // Count how many coins are down
   const redCoins = [btcChange, ethChange, solChange, bnbChange].filter(c => c < 0).length;
   
-  // Base score from average change
-  let fgValue = 50;
+  // IMPORTANT: F&G is NOT just about 24h change!
+  // Real F&G includes: volatility, volume, social sentiment, google trends, dominance
+  // Since we can't calculate all that, we use a CONSERVATIVE base value
+  // and only adjust for extreme market conditions
   
-  if (avgChange < -10) fgValue = 12;
-  else if (avgChange < -7) fgValue = 20;
-  else if (avgChange < -5) fgValue = 28;
-  else if (avgChange < -4) fgValue = 35;
-  else if (avgChange < -3) fgValue = 40;
-  else if (avgChange < -2) fgValue = 44;
-  else if (avgChange < -1) fgValue = 48;
-  else if (avgChange < 0) fgValue = 50;
-  else if (avgChange < 1) fgValue = 52;
-  else if (avgChange < 2) fgValue = 56;
-  else if (avgChange < 3) fgValue = 62;
-  else if (avgChange < 5) fgValue = 70;
-  else if (avgChange < 7) fgValue = 78;
-  else fgValue = 85;
+  let fgValue = 35; // Conservative base (Fear zone) when API fails
   
-  // ADJUSTMENT 1: Worst performer impact (max -8)
-  if (worstChange < -10) fgValue -= 8;
-  else if (worstChange < -7) fgValue -= 6;
-  else if (worstChange < -5) fgValue -= 4;
-  else if (worstChange < -3) fgValue -= 2;
+  // Only move to extreme values when market really shows it
+  if (avgChange < -8) fgValue = 10;
+  else if (avgChange < -6) fgValue = 15;
+  else if (avgChange < -4) fgValue = 20;
+  else if (avgChange < -2) fgValue = 28;
+  else if (avgChange < 0) fgValue = 35;
+  else if (avgChange < 2) fgValue = 40;
+  else if (avgChange < 4) fgValue = 48;
+  else if (avgChange < 6) fgValue = 55;
+  else if (avgChange < 8) fgValue = 65;
+  else fgValue = 75;
   
-  // ADJUSTMENT 2: All coins red = fear (max -5)
-  if (redCoins === 4) fgValue -= 5;
-  else if (redCoins === 3) fgValue -= 2;
+  // ADJUSTMENT 1: Worst performer impact (fear indicator)
+  if (worstChange < -8) fgValue -= 10;
+  else if (worstChange < -5) fgValue -= 6;
+  else if (worstChange < -3) fgValue -= 3;
   
-  // ADJUSTMENT 3: ETH underperforming = risk-off (max -4)
+  // ADJUSTMENT 2: Multiple coins red = fear
+  if (redCoins >= 3) fgValue -= 5;
+  else if (redCoins >= 2) fgValue -= 2;
+  
+  // ADJUSTMENT 3: ETH underperforming BTC = risk-off sentiment
   const ethVsBtc = ethChange - btcChange;
-  if (ethVsBtc < -5) fgValue -= 4;
-  else if (ethVsBtc < -3) fgValue -= 2;
+  if (ethVsBtc < -4) fgValue -= 6;
+  else if (ethVsBtc < -2) fgValue -= 3;
   
-  // Clamp to valid range (min 10 for calculated values)
-  fgValue = Math.max(10, Math.min(90, Math.round(fgValue)));
+  // ADJUSTMENT 4: High BTC dominance = flight to safety (bearish for alts)
+  if (btcDominance > 60) fgValue -= 5;
+  else if (btcDominance > 58) fgValue -= 2;
   
-  console.log('📊 F&G calculated from market:', fgValue, 
-    `| BTC: ${btcChange.toFixed(1)}% | ETH: ${ethChange.toFixed(1)}% | SOL: ${solChange.toFixed(1)}% | BNB: ${bnbChange.toFixed(1)}%`,
-    `| Avg: ${avgChange.toFixed(1)}% | Worst: ${worstChange.toFixed(1)}% | Red: ${redCoins}/4`);
+  // Clamp to valid range
+  fgValue = Math.max(10, Math.min(85, Math.round(fgValue)));
+  
+  console.log('📊 F&G calculated (ESTIMATED):', fgValue, 
+    `| BTC: ${btcChange.toFixed(1)}% | ETH: ${ethChange.toFixed(1)}% | Avg: ${avgChange.toFixed(1)}%`,
+    `| Worst: ${worstChange.toFixed(1)}% | Red: ${redCoins}/4 | BTC.D: ${btcDominance.toFixed(1)}%`);
   
   return fgValue;
 };
 
-// Binance Spot API - PRIMARY source for real-time prices
+// Binance Spot API - FALLBACK source for real-time prices
 const fetchBinancePrices = async () => {
   try {
-    const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT'];
-    const responses = await Promise.all(
-      symbols.map(symbol => 
-        fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`)
-          .then(r => r.ok ? r.json() : null)
-          .catch(() => null)
-      )
-    );
+    const cacheBuster = Date.now();
+    const symbolsParam = encodeURIComponent('["BTCUSDT","ETHUSDT","SOLUSDT","BNBUSDT"]');
+    const res = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbols=${symbolsParam}&_=${cacheBuster}`, {
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache' }
+    });
     
-    const [btc, eth, sol, bnb] = responses;
-    
-    if (!btc || !eth) {
-      console.warn('⚠️ Binance prices incomplete');
+    if (!res.ok) {
+      console.warn('⚠️ Binance API error:', res.status);
       return null;
     }
     
-    console.log('✅ Binance prices loaded | BTC:', parseFloat(btc.lastPrice).toFixed(2));
+    const data = await res.json();
+    
+    // Find each symbol in response
+    const btc = data.find(t => t.symbol === 'BTCUSDT');
+    const eth = data.find(t => t.symbol === 'ETHUSDT');
+    const sol = data.find(t => t.symbol === 'SOLUSDT');
+    const bnb = data.find(t => t.symbol === 'BNBUSDT');
+    
+    if (!btc || !eth) {
+      console.warn('⚠️ Binance prices incomplete - BTC/ETH missing');
+      return null;
+    }
+    
+    console.log('✅ Binance prices loaded | BTC:', parseFloat(btc.lastPrice).toFixed(2), '| ETH:', parseFloat(eth.lastPrice).toFixed(2));
     
     return {
       bitcoin: {
@@ -241,28 +274,46 @@ const fetchBinancePrices = async () => {
   }
 };
 
-// Combined data fetch - Binance prices + CoinGecko global data + F&G
+// Combined data fetch - CoinGecko primary + Binance fallback + F&G
 const fetchCoinGeckoData = async () => {
   try {
-    // Try Binance first for real-time prices
-    let prices = await fetchBinancePrices();
-    let priceSource = 'Binance';
+    let prices = null;
+    let priceSource = '';
     
-    // Fallback to CoinGecko if Binance fails
-    if (!prices) {
-      console.log('🔄 Falling back to CoinGecko for prices...');
-      const pricesRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,binancecoin&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true&include_market_cap=true');
+    // Cache-busting timestamp to ensure fresh data
+    const cacheBuster = Date.now();
+    
+    // Try CoinGecko first (primary source)
+    try {
+      const pricesRes = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,binancecoin&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true&include_market_cap=true&_=${cacheBuster}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' }
+      });
       if (pricesRes.ok) {
         prices = await pricesRes.json();
         priceSource = 'CoinGecko';
         console.log('✅ CoinGecko prices loaded | BTC:', prices.bitcoin?.usd);
+      }
+    } catch (e) {
+      console.warn('⚠️ CoinGecko prices failed:', e.message);
+    }
+    
+    // Fallback to Binance if CoinGecko fails
+    if (!prices) {
+      console.log('🔄 Falling back to Binance for prices...');
+      prices = await fetchBinancePrices();
+      if (prices) {
+        priceSource = 'Binance';
       }
     }
     
     // Always get global data from CoinGecko (dominance, market cap)
     let global = null;
     try {
-      const globalRes = await fetch('https://api.coingecko.com/api/v3/global');
+      const globalRes = await fetch(`https://api.coingecko.com/api/v3/global?_=${cacheBuster}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' }
+      });
       if (globalRes.ok) {
         global = await globalRes.json();
       }
@@ -282,7 +333,7 @@ const fetchCoinGeckoData = async () => {
     } else {
       // Fallback: Calculate from market data
       fgValue = calculateFearGreedFromMarket(prices, global);
-      fgSource = 'Calculated';
+      fgSource = 'Estimated';
     }
     
     const fgText = fgValue <= 20 ? 'Extreme Fear' : fgValue <= 35 ? 'Fear' : fgValue <= 50 ? 'Neutral' : fgValue <= 65 ? 'Greed' : fgValue <= 80 ? 'High Greed' : 'Extreme Greed';
@@ -303,28 +354,20 @@ const fetchCoinGeckoData = async () => {
     };
   } catch (error) {
     console.error('❌ All data sources failed:', error);
-    // Return fallback data so UI doesn't break
-    return {
-      btcPrice: { value: 78100, change: -2.5, volume: 25000000000, marketCap: 1550000000000, source: 'Fallback' },
-      ethPrice: { value: 2200, change: -7.5, volume: 12000000000 },
-      solPrice: { value: 100, change: -3.5, volume: 3000000000 },
-      bnbPrice: { value: 750, change: -3.0, volume: 1500000000 },
-      btcDominance: { value: 61.5 },
-      totalMarketCap: { value: '2.55' },
-      totalVolume: { value: '85' },
-      fearGreed: { value: 22, text: 'Extreme Fear', source: 'Fallback', isReal: false, lastUpdate: null },
-      priceSource: 'Fallback'
-    };
+    // Return null to show loading state - don't use stale fallback data
+    return null;
   }
 };
 
 // Binance Futures API
 const fetchBinanceData = async () => {
   try {
+    const cb = Date.now();
+    const opts = { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } };
     const [fundingRes, oiRes, lsRes] = await Promise.all([
-      fetch('https://fapi.binance.com/fapi/v1/fundingRate?symbol=BTCUSDT&limit=1'),
-      fetch('https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT'),
-      fetch('https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=1h&limit=1')
+      fetch(`https://fapi.binance.com/fapi/v1/fundingRate?symbol=BTCUSDT&limit=1&_=${cb}`, opts),
+      fetch(`https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT&_=${cb}`, opts),
+      fetch(`https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=1h&limit=1&_=${cb}`, opts)
     ]);
     
     if (!fundingRes.ok) throw new Error('Binance API error');
@@ -351,10 +394,12 @@ const fetchBinanceData = async () => {
 // DefiLlama API
 const fetchDefiLlamaData = async () => {
   try {
+    const cb = Date.now();
+    const opts = { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } };
     const [tvlRes, protocolsRes, stablesRes] = await Promise.all([
-      fetch('https://api.llama.fi/v2/historicalChainTvl'),
-      fetch('https://api.llama.fi/protocols'),
-      fetch('https://stablecoins.llama.fi/stablecoins?includePrices=true')
+      fetch(`https://api.llama.fi/v2/historicalChainTvl?_=${cb}`, opts),
+      fetch(`https://api.llama.fi/protocols?_=${cb}`, opts),
+      fetch(`https://stablecoins.llama.fi/stablecoins?includePrices=true&_=${cb}`, opts)
     ]);
     
     const tvlData = tvlRes.ok ? await tvlRes.json() : [];
@@ -396,12 +441,14 @@ const fetchDefiLlamaData = async () => {
 const fetchPolygonData = async () => {
   const POLYGON_API_KEY = 'Y4iTYoJALdgLzLDnBz2JHbe1sXhRTjqp';
   try {
+    const cb = Date.now();
+    const opts = { cache: 'no-store' };
     const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
     const [dxyRes, vixRes, spxRes, goldRes] = await Promise.all([
-      fetch(`https://api.polygon.io/v2/aggs/ticker/C:USDEUR/prev?adjusted=true&apiKey=${POLYGON_API_KEY}`),
-      fetch(`https://api.polygon.io/v2/aggs/ticker/I:VIX/prev?adjusted=true&apiKey=${POLYGON_API_KEY}`),
-      fetch(`https://api.polygon.io/v2/aggs/ticker/I:SPX/prev?adjusted=true&apiKey=${POLYGON_API_KEY}`),
-      fetch(`https://api.polygon.io/v2/aggs/ticker/C:XAUUSD/prev?adjusted=true&apiKey=${POLYGON_API_KEY}`)
+      fetch(`https://api.polygon.io/v2/aggs/ticker/C:USDEUR/prev?adjusted=true&apiKey=${POLYGON_API_KEY}&_=${cb}`, opts),
+      fetch(`https://api.polygon.io/v2/aggs/ticker/I:VIX/prev?adjusted=true&apiKey=${POLYGON_API_KEY}&_=${cb}`, opts),
+      fetch(`https://api.polygon.io/v2/aggs/ticker/I:SPX/prev?adjusted=true&apiKey=${POLYGON_API_KEY}&_=${cb}`, opts),
+      fetch(`https://api.polygon.io/v2/aggs/ticker/C:XAUUSD/prev?adjusted=true&apiKey=${POLYGON_API_KEY}&_=${cb}`, opts)
     ]);
     
     const dxy = dxyRes.ok ? await dxyRes.json() : null;
@@ -433,7 +480,8 @@ const fetchPolygonData = async () => {
 // FRED API for M2 Money Supply
 const fetchFredData = async () => {
   try {
-    const res = await fetch('https://api.stlouisfed.org/fred/series/observations?series_id=M2SL&api_key=YOUR_FRED_API_KEY&file_type=json&limit=2&sort_order=desc');
+    const cb = Date.now();
+    const res = await fetch(`https://api.stlouisfed.org/fred/series/observations?series_id=M2SL&api_key=YOUR_FRED_API_KEY&file_type=json&limit=2&sort_order=desc&_=${cb}`, { cache: 'no-store' });
     if (!res.ok) throw new Error('FRED API error');
     const data = await res.json();
     const latest = parseFloat(data?.observations?.[0]?.value || 22800);
@@ -448,9 +496,11 @@ const fetchFredData = async () => {
 // Altseason Data - ETH/BTC History FIXED
 const fetchAltseasonData = async () => {
   try {
+    const cb = Date.now();
+    const opts = { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } };
     const [ethBtcRes, globalRes] = await Promise.all([
-      fetch('https://api.coingecko.com/api/v3/coins/ethereum/market_chart?vs_currency=btc&days=90&interval=daily'),
-      fetch('https://api.coingecko.com/api/v3/global')
+      fetch(`https://api.coingecko.com/api/v3/coins/ethereum/market_chart?vs_currency=btc&days=90&interval=daily&_=${cb}`, opts),
+      fetch(`https://api.coingecko.com/api/v3/global?_=${cb}`, opts)
     ]);
     
     const ethBtcData = ethBtcRes.ok ? await ethBtcRes.json() : null;
@@ -506,7 +556,11 @@ const fetchAltseasonData = async () => {
 // Market Structure - Top Gainers/Losers and Sectors FIXED
 const fetchMarketStructure = async () => {
   try {
-    const res = await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&sparkline=false&price_change_percentage=24h');
+    const cb = Date.now();
+    const res = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&sparkline=false&price_change_percentage=24h&_=${cb}`, {
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache' }
+    });
     if (!res.ok) throw new Error('Market structure API error');
     const coins = await res.json();
     
@@ -559,8 +613,12 @@ const fetchMarketStructure = async () => {
 // Compare API - FIXED
 const fetchCompareData = async (coinIds) => {
   try {
+    const cb = Date.now();
     const ids = coinIds.join(',');
-    const res = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}&order=market_cap_desc&sparkline=true&price_change_percentage=1h,24h,7d,30d`);
+    const res = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}&order=market_cap_desc&sparkline=true&price_change_percentage=1h,24h,7d,30d&_=${cb}`, {
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache' }
+    });
     if (!res.ok) throw new Error('Compare API error');
     return await res.json();
   } catch (error) {
@@ -1251,6 +1309,7 @@ function App() {
   const [compareCoins, setCompareCoins] = useState(['bitcoin', 'ethereum', 'solana']);
   const [compareData, setCompareData] = useState(null);
   const [ethBtcRange, setEthBtcRange] = useState('30D');
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   
   // Portfolio States
   const [binanceApiKey, setBinanceApiKey] = useState('');
@@ -1259,36 +1318,75 @@ function App() {
   
   const t = themes[theme];
   
-  // Fetch all data
-  const fetchAllData = useCallback(async () => {
+  // Fetch all data with retry for initial load
+  const fetchAllData = useCallback(async (isInitialLoad = false) => {
     setLoading(true);
-    try {
-      const [cg, binance, defi, polygon, fred, altseason, structure] = await Promise.all([
-        fetchCoinGeckoData(),
-        fetchBinanceData(),
-        fetchDefiLlamaData(),
-        fetchPolygonData(),
-        fetchFredData(),
-        fetchAltseasonData(),
-        fetchMarketStructure()
-      ]);
-      
-      setCgData(cg);
-      setBinanceData(binance);
-      setDefiData(defi);
-      setPolygonData(polygon);
-      setFredData(fred);
-      setAltseasonData(altseason);
-      setMarketStructure(structure);
-    } catch (error) {
-      console.error('Data fetch error:', error);
+    const maxRetries = isInitialLoad ? 3 : 1;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`📡 Fetching data... ${isInitialLoad ? `(attempt ${attempt}/${maxRetries})` : ''}`);
+        
+        const [cg, binance, defi, polygon, fred, altseason, structure] = await Promise.all([
+          fetchCoinGeckoData(),
+          fetchBinanceData(),
+          fetchDefiLlamaData(),
+          fetchPolygonData(),
+          fetchFredData(),
+          fetchAltseasonData(),
+          fetchMarketStructure()
+        ]);
+        
+        // Check if we got valid price data
+        if (cg && cg.btcPrice && cg.btcPrice.value > 0) {
+          setCgData(cg);
+          setBinanceData(binance);
+          setDefiData(defi);
+          setPolygonData(polygon);
+          setFredData(fred);
+          setAltseasonData(altseason);
+          setMarketStructure(structure);
+          setInitialLoadComplete(true);
+          console.log('✅ All data loaded successfully');
+          break; // Success - exit retry loop
+        } else if (attempt < maxRetries) {
+          console.warn(`⚠️ Invalid data received, retrying in 1s... (attempt ${attempt}/${maxRetries})`);
+          await new Promise(r => setTimeout(r, 1000)); // Wait 1s before retry
+        } else {
+          console.error('❌ Failed to get valid data after all retries');
+          // Set whatever we got
+          if (cg) setCgData(cg);
+          if (binance) setBinanceData(binance);
+          if (defi) setDefiData(defi);
+          if (polygon) setPolygonData(polygon);
+          if (fred) setFredData(fred);
+          if (altseason) setAltseasonData(altseason);
+          if (structure) setMarketStructure(structure);
+        }
+      } catch (error) {
+        console.error('Data fetch error:', error);
+        if (attempt === maxRetries) break;
+        await new Promise(r => setTimeout(r, 1000));
+      }
     }
     setLoading(false);
   }, []);
   
   useEffect(() => {
-    fetchAllData();
-    const interval = setInterval(fetchAllData, 60000);
+    // CRITICAL: Force fresh data on app open
+    // Clear any cached state and immediately fetch
+    console.log('🚀 App initialized - forcing fresh data fetch...');
+    
+    // Immediate fetch with retry
+    const init = async () => {
+      // Small delay to ensure React is ready
+      await new Promise(r => setTimeout(r, 100));
+      await fetchAllData(true);
+    };
+    init();
+    
+    // Regular refresh every 60s
+    const interval = setInterval(() => fetchAllData(false), 60000);
     return () => clearInterval(interval);
   }, [fetchAllData]);
   
@@ -1477,14 +1575,11 @@ function App() {
       
       {/* Price Cards */}
       <div className="grid grid-cols-2 gap-3">
-        <Card helpKey="btcPrice" onHelp={setHelpModal} theme={theme} isLive signalColor={(cgData?.btcPrice?.change || 0) > 2 ? 'positive' : (cgData?.btcPrice?.change || 0) < -2 ? 'negative' : undefined}>
+        <Card helpKey="btcPrice" onHelp={setHelpModal} theme={theme} isLive signalColor={(cgData?.btcPrice?.change || 0) > 0 ? 'positive' : (cgData?.btcPrice?.change || 0) < 0 ? 'negative' : undefined}>
           <div className={`text-[10px] ${t.muted} mb-1`}>₿ Bitcoin</div>
           {loading ? <SkeletonLoader width="w-24" height="h-6" theme={theme} /> : <>
             <div className={`text-lg font-bold ${t.text}`}>{formatPrice(cgData?.btcPrice?.value)}</div>
-            <div className={`text-xs font-semibold ${(cgData?.btcPrice?.change || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatChange(cgData?.btcPrice?.change)}</div>
-            <div className={`text-[8px] ${cgData?.priceSource === 'Binance' ? 'text-yellow-500' : 'text-blue-400'} mt-0.5`}>
-              {cgData?.priceSource === 'Binance' ? '⚡ Binance' : cgData?.priceSource === 'CoinGecko' ? '🦎 CoinGecko' : '⚠️ Fallback'}
-            </div>
+            <div className={`text-xs font-semibold ${(cgData?.btcPrice?.change || 0) > 0 ? 'text-green-500' : (cgData?.btcPrice?.change || 0) < 0 ? 'text-red-500' : 'text-gray-500'}`}>{formatChange(cgData?.btcPrice?.change)}</div>
           </>}
         </Card>
         <Card helpKey="fearGreed" onHelp={setHelpModal} theme={theme} isLive signalColor={(cgData?.fearGreed?.value || 50) < 30 ? 'positive' : (cgData?.fearGreed?.value || 50) > 70 ? 'negative' : 'warning'}>
@@ -1493,27 +1588,27 @@ function App() {
             <div className={`text-lg font-bold ${fgValue <= 25 ? 'text-green-400' : fgValue >= 75 ? 'text-red-400' : t.text}`}>{cgData?.fearGreed?.value || '--'}</div>
             <div className={`text-xs ${t.muted}`}>{cgData?.fearGreed?.text || '--'}</div>
             <div className={`text-[8px] ${cgData?.fearGreed?.isReal ? 'text-green-500' : 'text-yellow-500'} mt-0.5`}>
-              {cgData?.fearGreed?.isReal ? `📡 ${cgData?.fearGreed?.source}` : '⚠️ Calculated'}
+              {cgData?.fearGreed?.isReal ? `📡 ${cgData?.fearGreed?.source}` : '⚠️ Estimated'}
             </div>
           </>}
         </Card>
       </div>
       
       <div className="grid grid-cols-3 gap-2">
-        <Card theme={theme} isLive>
+        <Card helpKey="ethPrice" onHelp={setHelpModal} theme={theme} isLive signalColor={(cgData?.ethPrice?.change || 0) > 0 ? 'positive' : (cgData?.ethPrice?.change || 0) < 0 ? 'negative' : undefined}>
           <div className={`text-[10px] ${t.muted} mb-1`}>◇ ETH</div>
           <div className={`text-sm font-bold ${t.text}`}>{formatPrice(cgData?.ethPrice?.value)}</div>
-          <div className={`text-[10px] ${(cgData?.ethPrice?.change || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatChange(cgData?.ethPrice?.change)}</div>
+          <div className={`text-[10px] ${(cgData?.ethPrice?.change || 0) > 0 ? 'text-green-500' : (cgData?.ethPrice?.change || 0) < 0 ? 'text-red-500' : 'text-gray-500'}`}>{formatChange(cgData?.ethPrice?.change)}</div>
         </Card>
-        <Card theme={theme} isLive>
+        <Card helpKey="solPrice" onHelp={setHelpModal} theme={theme} isLive signalColor={(cgData?.solPrice?.change || 0) > 0 ? 'positive' : (cgData?.solPrice?.change || 0) < 0 ? 'negative' : undefined}>
           <div className={`text-[10px] ${t.muted} mb-1`}>◎ SOL</div>
           <div className={`text-sm font-bold ${t.text}`}>{formatPrice(cgData?.solPrice?.value)}</div>
-          <div className={`text-[10px] ${(cgData?.solPrice?.change || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatChange(cgData?.solPrice?.change)}</div>
+          <div className={`text-[10px] ${(cgData?.solPrice?.change || 0) > 0 ? 'text-green-500' : (cgData?.solPrice?.change || 0) < 0 ? 'text-red-500' : 'text-gray-500'}`}>{formatChange(cgData?.solPrice?.change)}</div>
         </Card>
-        <Card theme={theme} isLive>
+        <Card helpKey="bnbPrice" onHelp={setHelpModal} theme={theme} isLive signalColor={(cgData?.bnbPrice?.change || 0) > 0 ? 'positive' : (cgData?.bnbPrice?.change || 0) < 0 ? 'negative' : undefined}>
           <div className={`text-[10px] ${t.muted} mb-1`}>◆ BNB</div>
           <div className={`text-sm font-bold ${t.text}`}>{formatPrice(cgData?.bnbPrice?.value)}</div>
-          <div className={`text-[10px] ${(cgData?.bnbPrice?.change || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatChange(cgData?.bnbPrice?.change)}</div>
+          <div className={`text-[10px] ${(cgData?.bnbPrice?.change || 0) > 0 ? 'text-green-500' : (cgData?.bnbPrice?.change || 0) < 0 ? 'text-red-500' : 'text-gray-500'}`}>{formatChange(cgData?.bnbPrice?.change)}</div>
         </Card>
       </div>
       
@@ -1615,7 +1710,7 @@ function App() {
               <div className={`text-lg font-bold ${t.text}`}>{cgData?.fearGreed?.value || '--'}</div>
               <div className={`text-xs ${t.muted}`}>{cgData?.fearGreed?.text || '--'}</div>
               <div className={`text-[8px] ${cgData?.fearGreed?.isReal ? 'text-green-500' : 'text-yellow-500'} mt-0.5`}>
-                {cgData?.fearGreed?.isReal ? `📡 ${cgData?.fearGreed?.source}` : '⚠️ Calculated'}
+                {cgData?.fearGreed?.isReal ? `📡 ${cgData?.fearGreed?.source}` : '⚠️ Estimated'}
               </div>
             </Card>
           </div>
